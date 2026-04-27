@@ -209,8 +209,8 @@ const emptySession = {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function HomeHealthSalesPlates({ leadData, onClose, onDispositionSave }) {
-  const [currentPlate, setCurrentPlate]           = useState(1)
+export default function HomeHealthSalesPlates({ leadData, onClose, onDispositionSave, initialPlate }) {
+  const [currentPlate, setCurrentPlate]           = useState(initialPlate || 1)
   const [timer, setTimer]                         = useState(0)
   const [isCallActive, setIsCallActive]           = useState(true)
   const [showNotes, setShowNotes]                 = useState(false)
@@ -242,7 +242,7 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
         const s = existing[0]
         setSessionId(s.id)
         activeSessionId = s.id
-        setCurrentPlate(Math.min(s.current_plate || 1, NAV_PLATES.length))
+        setCurrentPlate(initialPlate ? Math.min(initialPlate, NAV_PLATES.length) : Math.min(s.current_plate || 1, NAV_PLATES.length))
         setSession({
           ...emptySession,
           willingnessToAdvance: s.willing_to_advance,
