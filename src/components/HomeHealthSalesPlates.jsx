@@ -506,41 +506,30 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
         }).eq('id', leadId)
       }
 
-      // ── Handoff flow: sync back to shared parent lead + mark completed ──
+      // ── Handoff flow: sync via Edge Function (service-role server-side) ──
+      // Direct anon writes to the shared `leads` table will fail under RLS.
+      // The Edge Function holds the service role key and performs all
+      // cross-app writes: leads.update, hh_handoffs.completed, hh_follow_ups.
       if (handoffContext?.handoffId) {
-        const syncErrors = []
+        const { data: edgeResult, error: edgeErr } = await supabase.functions.invoke(
+          'complete-hh-handoff',
+          {
+            body: {
+              handoff_id: handoffContext.handoffId,
+              hh_disposition_id: dispRow?.id || null,
+              outcome: payload.outcome,
+              notes: session.notes || payload.notes || '',
+            },
+          }
+        )
 
-        const { error: leadsErr } = await supabase
-          .from('leads')
-          .update({ status: payload.outcome, updated_at: endedAt })
-          .eq('id', handoffContext.parentLeadId)
-        if (leadsErr) syncErrors.push(`Parent lead update: ${leadsErr.message}`)
-
-        const { error: handoffErr } = await supabase
-          .from('hh_handoffs')
-          .update({
-            status: 'completed',
-            completed_at: endedAt,
-            hh_disposition_id: dispRow?.id || null,
-          })
-          .eq('id', handoffContext.handoffId)
-        if (handoffErr) syncErrors.push(`Handoff completion: ${handoffErr.message}`)
-
-        // Optional follow-up record for callback outcomes (table may not exist yet)
-        if (payload.outcome === 'callback_requested' && handoffContext.parentLeadId) {
-          await supabase.from('hh_follow_ups').insert({
-            lead_id: handoffContext.parentLeadId,
-            agent_id: handoffContext.agentId,
-            source_app: 'zenyra_hh',
-            outcome: payload.outcome,
-            notes: session.notes || payload.notes || '',
-            created_at: endedAt,
-          }).catch(() => {})
-        }
-
-        if (syncErrors.length > 0) {
+        const syncFailed = edgeErr || (edgeResult?.success === false)
+        if (syncFailed) {
+          const msgs = edgeErr?.message
+            ? [edgeErr.message]
+            : (edgeResult?.errors || ['Unknown sync error'])
           setHandoffSyncError(
-            `HH disposition saved. Sync warnings — ${syncErrors.join(' | ')} — Main app may need manual refresh.`
+            `HH disposition saved. Sync issues: ${msgs.join(' | ')} — Main app may need manual refresh.`
           )
         }
       }
