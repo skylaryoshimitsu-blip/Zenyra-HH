@@ -209,7 +209,7 @@ const emptySession = {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function HomeHealthSalesPlates({ leadData, onClose, onDispositionSave, initialPlate }) {
+export default function HomeHealthSalesPlates({ leadData, onClose, onDispositionSave, initialPlate, handoffContext }) {
   const [currentPlate, setCurrentPlate]           = useState(initialPlate || 1)
   const [timer, setTimer]                         = useState(0)
   const [isCallActive, setIsCallActive]           = useState(true)
@@ -226,6 +226,7 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
   const [sessionId, setSessionId]                 = useState(null)
   const [callStartedAt]                           = useState(new Date().toISOString())
   const [session, setSession]                     = useState(emptySession)
+  const [handoffSyncError, setHandoffSyncError]   = useState(null)
 
   const leadId      = leadData?.id || leadData?.lead_id
   const customerName = leadData?.full_name || 'Customer'
@@ -281,13 +282,28 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
           notes: s.notes || '',
         })
       } else {
+        const prefill = handoffContext?.prefilledSession || {}
         const { data: created, error } = await supabase
           .from('hh_plate_sessions')
-          .insert({ lead_id: leadId, current_plate: 1, call_started_at: callStartedAt, plate_progress: {} })
+          .insert({
+            lead_id: leadId,
+            current_plate: initialPlate || 1,
+            call_started_at: callStartedAt,
+            plate_progress: {},
+            willing_to_advance: prefill.willingnessToAdvance ?? null,
+            has_part_a: prefill.hasPartA ?? false,
+            has_part_b: prefill.hasPartB ?? false,
+            has_medicaid: prefill.hasMedicaid ?? false,
+            ambulance_copay: prefill.ambulanceCopay || '',
+            notes: prefill.notes || '',
+          })
           .select().single()
         if (error) { console.error('Error creating session:', error); return }
         setSessionId(created.id)
         activeSessionId = created.id
+        if (handoffContext?.prefilledSession) {
+          setSession((prev) => ({ ...prev, ...prefill }))
+        }
       }
 
       if (activeSessionId) {
@@ -433,6 +449,7 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
   }
 
   const handleDispositionSave = async (payload) => {
+    setHandoffSyncError(null)
     const endedAt = new Date().toISOString()
     const qualifiedValue = session.qualified === true ? true : score.qualified === false ? false : null
     const durationMins = Number((timer / 60).toFixed(1))
@@ -440,13 +457,100 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
     const progress = buildPlateProgress(currentPlate)
 
     if (sessionId) {
-      await supabase.from('hh_plate_sessions').update({ call_ended_at: endedAt, disposition_logged_at: endedAt, call_duration_minutes: durationMins, time_to_disposition_minutes: timeToDisp, score_total: liveScore.score, score_band: liveScore.band, qualified: qualifiedValue, disqualification_reason: score.disqualificationReason || '', selected_option_key: session.selectedOptionKey || null }).eq('id', sessionId)
-      await supabase.from('hh_calls').insert({ lead_id: leadId, session_id: sessionId, lead_name_snapshot: customerName, state_snapshot: leadData?.state || '', score_total: liveScore.score, score_band: liveScore.band, qualified: qualifiedValue, disqualification_reason: score.disqualificationReason || '', plate_progress: progress, call_started_at: callStartedAt, call_ended_at: endedAt, disposition_logged_at: endedAt, call_duration_minutes: durationMins, time_to_disposition_minutes: timeToDisp, outcome: payload.outcome, notes: session.notes || payload.notes || '' })
-      await supabase.from('hh_dispositions').insert({ lead_id: leadId, session_id: sessionId, outcome: payload.outcome, lead_name_snapshot: customerName, state_snapshot: leadData?.state || '', score_total: liveScore.score, score_band: liveScore.band, qualified: qualifiedValue, disqualification_reason: score.disqualificationReason || '', call_started_at: callStartedAt, call_ended_at: endedAt, disposition_logged_at: endedAt, call_duration_minutes: durationMins, time_to_disposition_minutes: timeToDisp, notes: session.notes || payload.notes || '' })
-      await supabase.from('hh_leads').update({ status: payload.outcome, latest_score_total: liveScore.score, latest_score_band: liveScore.band, latest_qualified: qualifiedValue, latest_disqualification_reason: score.disqualificationReason || '', updated_at: endedAt }).eq('id', leadId)
+      await supabase.from('hh_plate_sessions').update({
+        call_ended_at: endedAt, disposition_logged_at: endedAt,
+        call_duration_minutes: durationMins, time_to_disposition_minutes: timeToDisp,
+        score_total: liveScore.score, score_band: liveScore.band,
+        qualified: qualifiedValue, disqualification_reason: score.disqualificationReason || '',
+        selected_option_key: session.selectedOptionKey || null,
+      }).eq('id', sessionId)
+
+      await supabase.from('hh_calls').insert({
+        lead_id: leadId, session_id: sessionId, lead_name_snapshot: customerName,
+        state_snapshot: leadData?.state || '', score_total: liveScore.score,
+        score_band: liveScore.band, qualified: qualifiedValue,
+        disqualification_reason: score.disqualificationReason || '',
+        plate_progress: progress, call_started_at: callStartedAt, call_ended_at: endedAt,
+        disposition_logged_at: endedAt, call_duration_minutes: durationMins,
+        time_to_disposition_minutes: timeToDisp, outcome: payload.outcome,
+        notes: session.notes || payload.notes || '',
+      })
+
+      // ── Core disposition insert — throw on failure so modal catches it ──
+      const { data: dispRow, error: dispErr } = await supabase
+        .from('hh_dispositions')
+        .insert({
+          lead_id: leadId, session_id: sessionId, outcome: payload.outcome,
+          lead_name_snapshot: customerName, state_snapshot: leadData?.state || '',
+          score_total: liveScore.score, score_band: liveScore.band,
+          qualified: qualifiedValue, disqualification_reason: score.disqualificationReason || '',
+          call_started_at: callStartedAt, call_ended_at: endedAt,
+          disposition_logged_at: endedAt, call_duration_minutes: durationMins,
+          time_to_disposition_minutes: timeToDisp, notes: session.notes || payload.notes || '',
+          ...(handoffContext ? { source_app: 'zenyra_hh', disposition_channel: 'hh_handoff' } : {}),
+        })
+        .select('id')
+        .single()
+
+      if (dispErr) {
+        throw new Error(`Disposition save failed: ${dispErr.message}`)
+      }
+
+      // ── Standalone flow: update hh_leads ───────────────────────────────
+      if (!handoffContext) {
+        await supabase.from('hh_leads').update({
+          status: payload.outcome, latest_score_total: liveScore.score,
+          latest_score_band: liveScore.band, latest_qualified: qualifiedValue,
+          latest_disqualification_reason: score.disqualificationReason || '',
+          updated_at: endedAt,
+        }).eq('id', leadId)
+      }
+
+      // ── Handoff flow: sync back to shared parent lead + mark completed ──
+      if (handoffContext?.handoffId) {
+        const syncErrors = []
+
+        const { error: leadsErr } = await supabase
+          .from('leads')
+          .update({ status: payload.outcome, updated_at: endedAt })
+          .eq('id', handoffContext.parentLeadId)
+        if (leadsErr) syncErrors.push(`Parent lead update: ${leadsErr.message}`)
+
+        const { error: handoffErr } = await supabase
+          .from('hh_handoffs')
+          .update({
+            status: 'completed',
+            completed_at: endedAt,
+            hh_disposition_id: dispRow?.id || null,
+          })
+          .eq('id', handoffContext.handoffId)
+        if (handoffErr) syncErrors.push(`Handoff completion: ${handoffErr.message}`)
+
+        // Optional follow-up record for callback outcomes (table may not exist yet)
+        if (payload.outcome === 'callback_requested' && handoffContext.parentLeadId) {
+          await supabase.from('hh_follow_ups').insert({
+            lead_id: handoffContext.parentLeadId,
+            agent_id: handoffContext.agentId,
+            source_app: 'zenyra_hh',
+            outcome: payload.outcome,
+            notes: session.notes || payload.notes || '',
+            created_at: endedAt,
+          }).catch(() => {})
+        }
+
+        if (syncErrors.length > 0) {
+          setHandoffSyncError(
+            `HH disposition saved. Sync warnings — ${syncErrors.join(' | ')} — Main app may need manual refresh.`
+          )
+        }
+      }
     }
 
-    onDispositionSave?.({ ...payload, score: liveScore.score, scoreBand: liveScore.band, qualified: qualifiedValue, disqualificationReason: score.disqualificationReason || '', notes: session.notes || payload.notes })
+    onDispositionSave?.({
+      ...payload, score: liveScore.score, scoreBand: liveScore.band,
+      qualified: qualifiedValue, disqualificationReason: score.disqualificationReason || '',
+      notes: session.notes || payload.notes,
+    })
     setIsCallActive(false)
   }
 
@@ -485,6 +589,11 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
 
       {/* ── Plate Content ──────────────────────────────────────────────────── */}
       <div style={content}>
+
+        {/* ── Handoff MAPD Context Reference ─────────────────────────────── */}
+        {handoffContext && (
+          <HandoffContextPanel payload={handoffContext.payload} />
+        )}
 
         {/* PLATE 1 — Opening & Verification */}
         {currentPlate === 1 && (
@@ -783,6 +892,17 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
         </button>
       </div>
 
+      {/* ── Handoff Sync Warning Banner ────────────────────────────────────── */}
+      {handoffSyncError && (
+        <div style={syncWarnBanner}>
+          <div style={{ flex: 1 }}>
+            <strong>⚠ Sync Warning</strong>
+            <div style={{ fontSize: 13, marginTop: 4, opacity: 0.9, lineHeight: 1.5 }}>{handoffSyncError}</div>
+          </div>
+          <button onClick={() => setHandoffSyncError(null)} style={dismissBannerBtn}>Dismiss</button>
+        </div>
+      )}
+
       {/* ── Disposition Modal ──────────────────────────────────────────────── */}
       {showDispositionModal && (
         <HomeHealthDispositionModal
@@ -922,3 +1042,108 @@ const medicarePartsRow = { display: 'flex', gap: 10, marginBottom: 20 }
 const partECallout    = { background: '#fef2f2', border: '2px solid #fca5a5', borderRadius: 14, padding: 18, marginBottom: 24 }
 const reimburseSummary = { background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 16px', marginTop: 12, fontSize: 14, color: '#14532d' }
 const selectOptionBtn  = { marginTop: 14, width: '100%', border: 'none', borderRadius: 10, padding: '10px 0', cursor: 'pointer', fontWeight: 700, fontSize: 14 }
+const syncWarnBanner   = { position: 'fixed', bottom: 76, left: 0, right: 0, background: '#b45309', color: '#fff', padding: '14px 24px', zIndex: 150, display: 'flex', alignItems: 'flex-start', gap: 16, boxShadow: '0 -2px 8px rgba(0,0,0,0.2)' }
+const dismissBannerBtn = { background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }
+
+// ─── Handoff MAPD Context Panel ────────────────────────────────────────────────
+function HandoffContextPanel({ payload }) {
+  const [expanded, setExpanded] = useState(false)
+  if (!payload) return null
+  const title = payload.name || payload.full_name || payload.customer_name || 'Lead'
+  return (
+    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 14, marginBottom: 20 }}>
+      <button
+        onClick={() => setExpanded((e) => !e)}
+        style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'transparent', border: 'none', padding: '12px 16px', cursor: 'pointer', textAlign: 'left' }}
+      >
+        <span style={{ fontWeight: 700, color: '#1e40af', fontSize: 14 }}>
+          📋 Handoff Context — {title} from Zenyra Main
+        </span>
+        <span style={{ color: '#6b7280', fontSize: 12 }}>{expanded ? '▲ Collapse' : '▼ Show MAPD Context'}</span>
+      </button>
+      {expanded && (
+        <div style={{ padding: '0 16px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <CtxSection title="Contact">
+            <CtxRow label="Name"        value={payload.name || payload.full_name || payload.customer_name} />
+            <CtxRow label="Phone"       value={payload.phone} />
+            <CtxRow label="DOB"         value={payload.dob || payload.date_of_birth} />
+            <CtxRow label="Medicare #"  value={payload.medicare_number} />
+            <CtxRow label="Medicaid #"  value={payload.medicaid_number} />
+            <CtxRow label="State / ZIP" value={[payload.state, payload.zip || payload.zipcode].filter(Boolean).join(' / ')} />
+            <CtxRow label="County"      value={payload.county} />
+            <CtxRow label="City"        value={payload.city} />
+          </CtxSection>
+          <CtxSection title="Current MAPD Plan">
+            <CtxRow label="Carrier"         value={payload.carrier_name || payload.org_name} />
+            <CtxRow label="Plan"            value={payload.plan_name} />
+            <CtxRow label="Type"            value={payload.plan_type} />
+            <CtxRow label="Premium"         value={payload.monthly_premium != null ? `$${payload.monthly_premium}/mo` : null} />
+            <CtxRow label="MOOP"            value={payload.moop} />
+            <CtxRow label="Part B Giveback" value={payload.part_b_giveback_status} />
+            <CtxRow label="Election Period" value={payload.election_period} />
+            <CtxRow label="SEP Date"        value={payload.sep_date} />
+          </CtxSection>
+          <CtxSection title="Copays">
+            <CtxRow label="Ambulance"    value={payload.ambulance_copay    != null ? `$${payload.ambulance_copay}`    : null} />
+            <CtxRow label="ER"           value={payload.er_copay           != null ? `$${payload.er_copay}`           : null} />
+            <CtxRow label="Inpatient"    value={payload.inpatient_copay    != null ? `$${payload.inpatient_copay}`    : null} />
+            <CtxRow label="PCP"          value={payload.pcp_copay          != null ? `$${payload.pcp_copay}`          : null} />
+            <CtxRow label="Specialist"   value={payload.specialist_copay   != null ? `$${payload.specialist_copay}`   : null} />
+            <CtxRow label="Urgent Care"  value={payload.urgent_care_copay  != null ? `$${payload.urgent_care_copay}`  : null} />
+            <CtxRow label="Drug Deduct." value={payload.drug_deductible    != null ? `$${payload.drug_deductible}`    : null} />
+            <CtxRow label="Health Deduct." value={payload.health_deductible != null ? `$${payload.health_deductible}` : null} />
+          </CtxSection>
+          <CtxSection title="Drugs from Main App">
+            {Array.isArray(payload.added_drugs) && payload.added_drugs.length > 0
+              ? payload.added_drugs.map((d, i) => (
+                  <CtxRow key={i}
+                    label={typeof d === 'string' ? d : (d.name || 'Drug')}
+                    value={typeof d === 'string' ? '' : (d.type || '')}
+                  />
+                ))
+              : <div style={{ color: '#9ca3af', fontSize: 13 }}>None recorded</div>
+            }
+          </CtxSection>
+          {(payload.notes || (Array.isArray(payload.added_doctors) && payload.added_doctors.length > 0)) && (
+            <div style={{ gridColumn: '1 / -1' }}>
+              {Array.isArray(payload.added_doctors) && payload.added_doctors.length > 0 && (
+                <CtxSection title="Doctors from Main App">
+                  {payload.added_doctors.map((d, i) => (
+                    <CtxRow key={i}
+                      label={typeof d === 'string' ? d : (d.name || 'Doctor')}
+                      value={typeof d === 'string' ? '' : (d.specialty || '')}
+                    />
+                  ))}
+                </CtxSection>
+              )}
+              {payload.notes && (
+                <CtxSection title="Notes from Main App">
+                  <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{payload.notes}</div>
+                </CtxSection>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CtxSection({ title, children }) {
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>{title}</div>
+      {children}
+    </div>
+  )
+}
+
+function CtxRow({ label, value }) {
+  if (value === null || value === undefined || value === '') return null
+  return (
+    <div style={{ display: 'flex', gap: 6, fontSize: 13, marginBottom: 4 }}>
+      <span style={{ color: '#6b7280', minWidth: 110, flexShrink: 0 }}>{label}:</span>
+      <span style={{ fontWeight: 500, color: '#111827' }}>{value}</span>
+    </div>
+  )
+}
