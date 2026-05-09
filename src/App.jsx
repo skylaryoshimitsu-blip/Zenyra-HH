@@ -3,27 +3,10 @@ import HomeHealthDashboard from './components/HomeHealthDashboard'
 import HomeHealthAdminDashboard from './components/HomeHealthAdminDashboard'
 import HomeHealthSalesPlates from './components/HomeHealthSalesPlates'
 import { mockLeads } from './lib/mockData'
+import { supabase } from './lib/supabaseClient'
 
 const LEADS_KEY = 'hh_leads'
 const DISPOSITIONS_KEY = 'hh_dispositions'
-
-function parseHandoffParam() {
-  try {
-    const params = new URLSearchParams(window.location.search)
-    const raw = params.get('handoff')
-    if (!raw) return null
-    let payload
-    try {
-      payload = JSON.parse(atob(raw))
-    } catch {
-      payload = JSON.parse(raw)
-    }
-    if (!payload || payload.source !== 'zenyra-main') return null
-    return payload
-  } catch {
-    return null
-  }
-}
 
 export default function App() {
   const [view, setView] = useState('agent')
@@ -45,6 +28,9 @@ export default function App() {
   })
   const [handoffLead, setHandoffLead] = useState(null)
   const [handoffInitialPlate, setHandoffInitialPlate] = useState(null)
+  const [handoffPayload, setHandoffPayload] = useState(null)
+  const [handoffError, setHandoffError] = useState('')
+  const [handoffLoading, setHandoffLoading] = useState(false)
 
   useEffect(() => {
     localStorage.setItem(LEADS_KEY, JSON.stringify(leads))
@@ -54,61 +40,60 @@ export default function App() {
     localStorage.setItem(DISPOSITIONS_KEY, JSON.stringify(dispositions))
   }, [dispositions])
 
-  // Parse handoff from URL on mount
+  // Resolve handoff_id token from Supabase on mount
   useEffect(() => {
-    const payload = parseHandoffParam()
-    if (!payload) return
+    const params = new URLSearchParams(window.location.search)
+    const handoffId = params.get('handoff_id')
+    if (!handoffId) return
 
-    const initialPlate = payload.launched_from_plate === 7 ? 8 : 1
+    const resolveHandoff = async () => {
+      setHandoffLoading(true)
 
-    const leadFields = {
-      full_name: payload.name || '',
-      phone: payload.phone || '',
-      email: payload.email || '',
-      dob: payload.dob || '',
-      medicare_number: payload.medicare_number || '',
-      medicaid_number: payload.medicaid_number || '',
-      zipcode: payload.zip || '',
-      county: payload.county || '',
-      state: payload.state || '',
-      city: payload.city || '',
-      notes: payload.notes || '',
-      willing_to_advance: true,
-      status: 'new',
-    }
+      const { data: token, error } = await supabase
+        .from('hh_handoff_tokens')
+        .select('*')
+        .eq('handoff_id', handoffId)
+        .is('consumed_at', null)
+        .gt('expires_at', new Date().toISOString())
+        .single()
 
-    // Read current leads from localStorage to find existing match
-    let currentLeads
-    try {
-      const stored = JSON.parse(localStorage.getItem(LEADS_KEY) || 'null')
-      currentLeads = Array.isArray(stored) && stored.length ? stored : mockLeads
-    } catch {
-      currentLeads = mockLeads
-    }
+      window.history.replaceState(null, '', window.location.pathname)
 
-    const existingIdx = payload.phone
-      ? currentLeads.findIndex((l) => l.phone === payload.phone)
-      : -1
-
-    let resolvedLead
-    if (existingIdx >= 0) {
-      resolvedLead = { ...currentLeads[existingIdx], ...leadFields }
-    } else {
-      resolvedLead = { id: `handoff-${Date.now()}`, ...leadFields }
-    }
-
-    setLeads((prev) => {
-      if (existingIdx >= 0) {
-        return prev.map((l, i) => (i === existingIdx ? resolvedLead : l))
+      if (error || !token) {
+        setHandoffError('This handoff link has expired or already been used.')
+        setHandoffLoading(false)
+        return
       }
-      return [resolvedLead, ...prev]
-    })
 
-    setHandoffLead(resolvedLead)
-    setHandoffInitialPlate(initialPlate)
+      await supabase
+        .from('hh_handoff_tokens')
+        .update({ consumed_at: new Date().toISOString() })
+        .eq('handoff_id', handoffId)
 
-    // Clean URL
-    window.history.replaceState(null, '', window.location.pathname)
+      const p = token.payload
+      const leadData = {
+        id: p.lead_id,
+        lead_id: p.lead_id,
+        full_name: p.full_name || p.customer_name,
+        phone: p.phone,
+        email: p.email,
+        dob: p.dob,
+        gender: p.gender,
+        city: p.city,
+        state: p.state,
+        county: p.county,
+        zipcode: p.zip_code,
+      }
+
+      const initialPlate = p.target_hh_plate || 1
+
+      setHandoffPayload({ ...p, handoff_id: handoffId })
+      setHandoffLead(leadData)
+      setHandoffInitialPlate(initialPlate)
+      setHandoffLoading(false)
+    }
+
+    resolveHandoff()
   }, [])
 
   const sharedProps = useMemo(
@@ -116,27 +101,45 @@ export default function App() {
     [leads, dispositions]
   )
 
-  // Handoff: open plates immediately, bypassing the dashboard
+  if (handoffLoading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#f9fafb', color: '#374151', fontSize: 16 }}>
+        Loading handoff…
+      </div>
+    )
+  }
+
   if (handoffLead) {
     return (
       <HomeHealthSalesPlates
         leadData={handoffLead}
         initialPlate={handoffInitialPlate}
+        handoffPayload={handoffPayload}
         onClose={() => setHandoffLead(null)}
         onDispositionSave={() => setHandoffLead(null)}
       />
     )
   }
 
-  return view === 'agent' ? (
-    <HomeHealthDashboard
-      {...sharedProps}
-      onOpenAdmin={() => setView('admin')}
-    />
-  ) : (
-    <HomeHealthAdminDashboard
-      {...sharedProps}
-      onBack={() => setView('agent')}
-    />
+  return (
+    <>
+      {handoffError && (
+        <div style={{ position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', background: '#7f1d1d', color: '#fff', padding: '12px 20px', borderRadius: 12, zIndex: 90, display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.2)', fontSize: 14, fontWeight: 500 }}>
+          {handoffError}
+          <button onClick={() => setHandoffError('')} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}>×</button>
+        </div>
+      )}
+      {view === 'agent' ? (
+        <HomeHealthDashboard
+          {...sharedProps}
+          onOpenAdmin={() => setView('admin')}
+        />
+      ) : (
+        <HomeHealthAdminDashboard
+          {...sharedProps}
+          onBack={() => setView('agent')}
+        />
+      )}
+    </>
   )
 }

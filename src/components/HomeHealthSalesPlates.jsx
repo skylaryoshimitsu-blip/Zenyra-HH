@@ -209,7 +209,7 @@ const emptySession = {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function HomeHealthSalesPlates({ leadData, onClose, onDispositionSave, initialPlate }) {
+export default function HomeHealthSalesPlates({ leadData, onClose, onDispositionSave, initialPlate, handoffPayload }) {
   const [currentPlate, setCurrentPlate]           = useState(initialPlate || 1)
   const [timer, setTimer]                         = useState(0)
   const [isCallActive, setIsCallActive]           = useState(true)
@@ -291,8 +291,53 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
       }
 
       if (activeSessionId) {
+        // Pre-populate session row from handoff payload when present
+        if (handoffPayload) {
+          await supabase.from('hh_plate_sessions').update({
+            willing_to_advance: handoffPayload.willingnessToAdvance ?? handoffPayload.willing_to_advance ?? null,
+            ambulance_past_5_yrs: handoffPayload.ambulance_past_5_yrs ?? null,
+            currently_receiving_home_help_discovery: handoffPayload.currently_receiving_home_help ?? null,
+            last_hospitalization: handoffPayload.last_hospitalization || null,
+            has_part_a: handoffPayload.has_part_a ?? false,
+            handoff_source: 'zenyra-main',
+            handoff_id: handoffPayload.handoff_id,
+          }).eq('id', activeSessionId)
+        }
+
         const { data: drugs } = await supabase.from('hh_session_drugs').select('*').eq('session_id', activeSessionId)
-        if (drugs?.length > 0) setSession((prev) => ({ ...prev, medications: drugs.map((d) => ({ name: d.drug_name, type: d.drug_type })) }))
+
+        // Insert handoff medications only when none exist for this session yet
+        let handoffMeds = []
+        if (handoffPayload?.medications?.length > 0 && !(drugs?.length > 0)) {
+          const drugInserts = handoffPayload.medications.map((m) => ({
+            session_id: activeSessionId,
+            drug_name: m.name,
+            drug_type: m.type,
+            reimbursement_value: m.type === 'brand' ? 25 : 10,
+          }))
+          const { data: insertedDrugs } = await supabase.from('hh_session_drugs').insert(drugInserts).select()
+          handoffMeds = (insertedDrugs || []).length > 0
+            ? insertedDrugs.map((d) => ({ name: d.drug_name, type: d.drug_type }))
+            : handoffPayload.medications.map((m) => ({ name: m.name, type: m.type }))
+        }
+
+        if (drugs?.length > 0) {
+          setSession((prev) => ({ ...prev, medications: drugs.map((d) => ({ name: d.drug_name, type: d.drug_type })) }))
+        } else if (handoffMeds.length > 0) {
+          setSession((prev) => ({ ...prev, medications: handoffMeds }))
+        }
+
+        // Apply handoff session field overrides on top of restored state
+        if (handoffPayload) {
+          setSession((prev) => ({
+            ...prev,
+            willingnessToAdvance: handoffPayload.willingnessToAdvance ?? handoffPayload.willing_to_advance ?? prev.willingnessToAdvance,
+            ambulancePast5Yrs: handoffPayload.ambulance_past_5_yrs ?? prev.ambulancePast5Yrs,
+            currentlyReceivingHomeHelp: handoffPayload.currently_receiving_home_help ?? prev.currentlyReceivingHomeHelp,
+            lastHospitalization: handoffPayload.last_hospitalization || prev.lastHospitalization,
+            hasPartA: handoffPayload.has_part_a ?? prev.hasPartA,
+          }))
+        }
 
         const { data: events, error: objErr } = await supabase
           .from('hh_objection_events').select('*').eq('session_id', activeSessionId).order('created_at', { ascending: false })
