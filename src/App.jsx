@@ -74,14 +74,14 @@ export default function App() {
       const { error: leadUpsertError } = await supabase
         .from('hh_leads')
         .upsert({
-          id: token.payload.lead_id,
+          lead_id: token.payload.lead_id,
           full_name: token.payload.full_name || token.payload.customer_name || 'Unknown',
           phone: token.payload.phone || null,
           email: token.payload.email || null,
           state: token.payload.state || null,
           status: 'new',
         }, {
-          onConflict: 'id',
+          onConflict: 'lead_id',
           ignoreDuplicates: true,
         });
 
