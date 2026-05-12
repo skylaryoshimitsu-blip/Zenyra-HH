@@ -70,6 +70,26 @@ export default function App() {
         .update({ consumed_at: new Date().toISOString() })
         .eq('handoff_id', handoffId)
 
+      // Ensure the lead exists in hh_leads before session creation
+      const { error: leadUpsertError } = await supabase
+        .from('hh_leads')
+        .upsert({
+          id: token.payload.lead_id,
+          full_name: token.payload.full_name || token.payload.customer_name || 'Unknown',
+          phone: token.payload.phone || null,
+          email: token.payload.email || null,
+          state: token.payload.state || null,
+          status: 'new',
+        }, {
+          onConflict: 'id',
+          ignoreDuplicates: true,
+        });
+
+      if (leadUpsertError) {
+        console.error('Failed to upsert lead into hh_leads:', leadUpsertError);
+        // Do not block the handoff — log and continue
+      }
+
       const p = token.payload
       const leadData = {
         id: p.lead_id,
