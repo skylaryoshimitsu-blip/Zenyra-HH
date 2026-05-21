@@ -633,18 +633,22 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
         {/* PLATE 4 — Plan Review */}
         {currentPlate === 4 && (
           <div>
-            <div style={reminderBanner}>📝 Make sure the prospect has something to write with before you start.</div>
-            <ScriptBlock>"Let me go over a few key areas of your current plan — and go ahead and grab something to write with."</ScriptBlock>
+            <ScriptBlock>"Ok {customerName}, on the surface, this looks like a really good plan for you. I am beginning to see why you went with this plan."</ScriptBlock>
+            <ScriptBlock>"We don't need to change this plan at all."</ScriptBlock>
+            <InternalNote>Open UNL and begin filling in info for the quote while reviewing the plan. Call out the positives — for example: $0 PCP CoPay, Low or No Medical/Drug Deductible, Dental/Vision/Hearing coverage, Part B Giveback.</InternalNote>
+            <Field label="Call out the positives (notes)">
+              <textarea value={session.planReviewNotes} onChange={(e) => update({ planReviewNotes: e.target.value })} style={textarea} placeholder="e.g. $0 PCP copay, $0 drug deductible, DVH included, $X Part B giveback" />
+            </Field>
+            <ScriptBlock>"So {customerName}, are you happy with this plan? Any complaints at all?"</ScriptBlock>
+            <ScriptBlock>"I am glad to hear that you are happy with your plan. Now let's check out your hospital coverage."</ScriptBlock>
             <Field label="Ambulance Copay">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ color: '#6b7280' }}>$</span>
                 <input value={session.ambulanceCopay} onChange={(e) => update({ ambulanceCopay: e.target.value })} style={{ ...input, maxWidth: 200 }} type="number" placeholder="0.00" />
               </div>
-              <div style={scriptHint}>"Your ambulance copay is [amount] — write that down."</div>
             </Field>
             <Field label="Home Health Cost / Structure">
               <textarea value={session.homeHealthCost} onChange={(e) => update({ homeHealthCost: e.target.value })} style={textarea} placeholder="Describe current plan home health coverage structure / amount" />
-              <div style={scriptHint}>"For home health care, your plan currently covers [structure/amount]."</div>
             </Field>
             <Field label="Inpatient Hospital — Days 1 through X copay">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -659,22 +663,32 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
                 <input value={session.inpatientDaysXPlusCopay} onChange={(e) => update({ inpatientDaysXPlusCopay: e.target.value })} style={{ ...input, maxWidth: 200 }} type="number" placeholder="0.00" />
                 <span style={{ color: '#6b7280', fontSize: 13 }}>per day</span>
               </div>
-              <div style={scriptHint}>"For inpatient hospital stays — you pay $0 per day for days [X through X], and after that your costs go up."</div>
             </Field>
             <div style={gapCallout}>"The gap I'm seeing is that there's no extended protection in place for what happens after those initial days — and that's where costs start to add up fast."</div>
-            <Field label="Notes">
-              <textarea value={session.planReviewNotes} onChange={(e) => update({ planReviewNotes: e.target.value })} style={textarea} placeholder="Additional plan review notes" />
-            </Field>
-            <InternalNote>Use actual plan figures from plan documents or as confirmed by prospect. If unknown, note "prospect not sure" and frame the gap conceptually. Do not estimate dollar amounts.</InternalNote>
           </div>
         )}
 
-        {/* PLATE 5 — Value Framing */}
+        {/* PLATE 5 — Problem Reveal */}
         {currentPlate === 5 && (
           <div>
-            <ScriptBlock>"If you had to go to the hospital right now — on top of everything else — that ambulance copay, those inpatient costs we just went over… that's an additional financial hit. And most people aren't prepared for it."</ScriptBlock>
-            <ScriptBlock>"What I want to do is make sure you're protected from that. There are also better solutions available for home healthcare that can reduce what you'd otherwise be paying out of pocket."</ScriptBlock>
-            <ScriptBlock>"And one more thing — if you ever receive a bill from a hospital, call me before you pay it. Billing errors happen all the time and I want to make sure you're only paying what you actually owe."</ScriptBlock>
+            <ScriptBlock>"Ok {customerName}, we have a bit of a problem. Unfortunately it looks like your agent didn't complete the hospital coverage. It is not your fault — I am starting to see this more and more."</ScriptBlock>
+            <ScriptBlock>"The way that most Medicare Advantage plans work is that they don't pay if you go to the hospital until you have been there for about 7 days. So what this means for you is if you would have gone to the hospital with your plan, you would be responsible for about $2,000 to $3,000 dollars just in the first week of your stay. That would have been a bill that you should have never had to pay."</ScriptBlock>
+            <ScriptBlock>"{customerName}, I am going to take a minute to briefly explain how the different parts of Medicare work so that you get the full picture of what's going on here."</ScriptBlock>
+            <div style={medicarePartsRow}>
+              {[
+                { key: 'A', label: 'Part A', desc: 'How you get that red, white, and blue Medicare card. Foundation of Medicare.' },
+                { key: 'B', label: 'Part B', desc: "Has a premium taken out of your Social Security benefit before you receive your monthly deposit. Most people don't know they are paying for it. If you are not on Medicaid, the premium this year is $202.90/mo." },
+                { key: 'C', label: 'Part C', desc: 'Medicare Advantage — covers your doctors, dental, vision, and hearing coverage.' },
+                { key: 'D', label: 'Part D', desc: 'Prescription drug coverage.' },
+              ].map((part) => (
+                <div key={part.key} style={medicarePartCard(true)}>
+                  <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4, color: '#1e3a5f' }}>{part.label}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 6, lineHeight: 1.4 }}>{part.desc}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>✓ You have this</div>
+                </div>
+              ))}
+            </div>
+            <ScriptBlock>"Now having Medicare Part A, B, C, and D is very good — however it is incomplete if you want to avoid unnecessary expensive hospital costs. Does that make sense?"</ScriptBlock>
             <Field label="Financial Concern Capture">
               <textarea value={session.financialImpactStatement} onChange={(e) => update({ financialImpactStatement: e.target.value })} style={textarea} placeholder="Capture their financial concern / reaction" />
             </Field>
@@ -686,7 +700,6 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
               <ToggleButton active={session.openToProtectionOptions === true}  onClick={() => update({ openToProtectionOptions: true  })}>Yes</ToggleButton>
               <ToggleButton active={session.openToProtectionOptions === false} onClick={() => update({ openToProtectionOptions: false })}>No</ToggleButton>
             </ChoiceRow>
-            <InternalNote>Reference specific dollar figures from Plan Review (Plate 5). Yes = strong lead score signal. No = handle objection before advancing — do not skip past a No.</InternalNote>
           </div>
         )}
 
@@ -749,7 +762,7 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
           </div>
         )}
 
-        {/* PLATE 8 — Recommendation & Close */}
+        {/* PLATE 8 — Solution Reveal + Close */}
         {currentPlate === 8 && (
           <div>
             <div style={leadScoreBanner(liveScore.band)}>
@@ -764,12 +777,16 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
               </div>
             </div>
 
-            <ScriptBlock>"I'm going to walk you through your options — go ahead and write these down."</ScriptBlock>
+            <ScriptBlock>"This is why extended hospital coverage is needed. Some people refer to this as Part E. What is great about this is that your Part E is going to be way less than your Part B."</ScriptBlock>
+            <ScriptBlock>"{customerName}, I am going to share with you the coverage that should have been presented to you when you first got on this plan."</ScriptBlock>
+            <ScriptBlock>"{customerName}, I am going to have you write down your option so that it will be easier for you to understand. If you are able to, go ahead and grab something to write with and let me know when you are ready."</ScriptBlock>
+            <InternalNote>Present ONE option only. Build the option using the premium input below. Do not reference Option 2 or multiple options.</InternalNote>
 
-            <div style={optionsGrid}>
-              {optionResults.map((option) => (
-                <div key={option.code} style={{ ...optionCard, borderColor: session.selectedOptionKey === option.code ? '#2563eb' : '#e5e7eb', borderWidth: session.selectedOptionKey === option.code ? 2 : 1 }}>
-                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, color: '#6b7280' }}>{option.label}</div>
+            {(() => {
+              const option = optionResults[0]
+              return (
+                <div style={{ ...optionCard, maxWidth: 420, marginBottom: 20, borderColor: session.selectedOptionKey === option.code ? '#2563eb' : '#e5e7eb', borderWidth: session.selectedOptionKey === option.code ? 2 : 1 }}>
+                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, color: '#6b7280' }}>Your Option</div>
                   <div style={{ fontSize: 30, fontWeight: 700, margin: '6px 0 2px' }}>${option.benefitAmount.toLocaleString()}</div>
                   <div style={{ color: '#6b7280', marginBottom: 12, fontSize: 13 }}>Home health benefit</div>
                   <Field label="Entered Monthly Premium">
@@ -784,14 +801,14 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
                     <Metric label="Effective Annual Cost"      value={`$${option.effectiveAnnualCost.toFixed(2)}`} />
                   </div>
                   <button onClick={() => update({ selectedOptionKey: option.code })} style={{ ...selectOptionBtn, background: session.selectedOptionKey === option.code ? '#1d4ed8' : '#f3f4f6', color: session.selectedOptionKey === option.code ? '#fff' : '#374151' }}>
-                    {session.selectedOptionKey === option.code ? '✓ Selected' : `Select ${option.label}`}
+                    {session.selectedOptionKey === option.code ? '✓ Selected' : 'Select Your Option'}
                   </button>
                 </div>
-              ))}
-            </div>
+              )
+            })()}
 
-            <ScriptBlock>"Based on everything we've gone over — all three options will protect you from the gaps we talked about. The difference is just how much coverage you want and what fits your budget best. Which one works best for you?"</ScriptBlock>
-            <InternalNote>Stop talking after "Which one works best for you?" — wait for the response. Do not fill the silence. Once prospect selects, click the corresponding button to log it, then deliver the confirmation line.</InternalNote>
+            <ScriptBlock>"Both of these benefits work together — your home healthcare coverage and your hospital copay protection. The goal is to make sure that if something happens, you are fully covered and your family is not left with a bill."</ScriptBlock>
+            <ScriptBlock>"{customerName}, based on everything we have gone over today — would you like to move forward and get this protection in place for you?"</ScriptBlock>
             {session.selectedOptionKey && (
               <ScriptBlock>"That's a solid choice. You can always adjust your coverage later if your needs change — I'll be here as your Medicare advisor moving forward."</ScriptBlock>
             )}
