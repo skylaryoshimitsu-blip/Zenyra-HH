@@ -4,17 +4,16 @@ import { scoreHomeHealthSession } from '../lib/hhScoring'
 import HomeHealthDispositionModal from './HomeHealthDispositionModal'
 import { supabase } from '../lib/supabaseClient'
 
-// ─── Plate Definitions — 9 plates, confirmed sequence ────────────────────────
+// ─── Plate Definitions — 8 plates ────────────────────────────────────────────
 const NAV_PLATES = [
   { id: 1, name: 'Opening & Verification' },
-  { id: 2, name: 'Discovery' },
-  { id: 3, name: 'Medication Capture' },
+  { id: 2, name: 'Discovery & Qualification' },
+  { id: 3, name: 'Medication Count' },
   { id: 4, name: 'Plan Review' },
-  { id: 5, name: 'Value Framing' },
-  { id: 6, name: 'Qualification' },
-  { id: 7, name: 'Medicare Education' },
-  { id: 8, name: 'Recommendation & Close' },
-  { id: 9, name: 'Final Close' },
+  { id: 5, name: 'Problem Reveal' },
+  { id: 6, name: 'Medicare Education' },
+  { id: 7, name: 'Product Selection' },
+  { id: 8, name: 'Final Close' },
 ]
 
 // ─── Objection Options ────────────────────────────────────────────────────────
@@ -87,6 +86,10 @@ function formatTime(seconds) {
 
 function capitalize(str) { return str.charAt(0).toUpperCase() + str.slice(1) }
 
+function formatCurrency(amount) {
+  return '$' + Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 // ─── Live Lead Score — progressive scoring per confirmed signal map ───────────
 function computeLiveScore(session, objectionModifier = 0) {
   const adlCount = Object.values(session.adls || {}).filter(Boolean).length
@@ -114,8 +117,8 @@ function computeLiveScore(session, objectionModifier = 0) {
   if (session.carePreference === 'home')            s += 8
   if (session.carePreference === 'facility' || session.carePreference === 'unsure') s += 3
 
-  // Plate 3 — Medications
-  const medCount = (session.medications || []).length
+  // Plate 3 — Prescription Count
+  const medCount = session.prescriptionCount || 0
   if (medCount >= 3) s += 12
   else if (medCount >= 1) s += 5
 
@@ -136,7 +139,7 @@ function computeLiveScore(session, objectionModifier = 0) {
   if (session.qualified === true) s += 12
   if (adlCount === 1)             s += 5
 
-  // Plate 9 — Option selected
+  // Product selected
   if (session.selectedOptionKey === 'c') s += 15
   if (session.selectedOptionKey === 'b') s += 10
   if (session.selectedOptionKey === 'a') s += 6
@@ -179,32 +182,46 @@ const emptySession = {
   currentlyReceivingHomeHelp: null,
   carePreference: '',
   discoveryNotes: '',
-  // Plate 3 — Medications
-  medications: [],
-  // Plate 4 — Medicare Information
-  hasPartA: false,
-  hasPartB: false,
-  hasMedicaid: false,
-  // Plate 5 — Plan Review
-  ambulanceCopay: '',
-  homeHealthCost: '',
-  inpatientDays1XCopay: '',
-  inpatientDaysXPlusCopay: '',
-  planReviewNotes: '',
-  // Plate 6 — Value Framing
-  financialImpactStatement: '',
-  homeCareBurdenConfirmed: '',
-  openToProtectionOptions: null,
-  // Plate 7 — Qualification
+  // Plate 2 — Qualification (merged)
   currentlyInNursingHome: false,
   currentlyReceivingHomeHealth: false,
   memoryConditionLast12Months: false,
   qualified: false,
   adls: { bathing: false, dressing: false, toileting: false, transferring: false, continence: false, feeding: false },
-  // Plate 9 — Recommendation & Close
+  // Plate 3 — Medication Count
+  prescriptionCount: null,
+  medications: [],
+  // Legacy Medicare fields — loaded from DB, kept for scoring
+  hasPartA: false,
+  hasPartB: false,
+  hasMedicaid: false,
+  // Plate 4 — Plan Review (inputs hidden, saved as-is)
+  ambulanceCopay: '',
+  homeHealthCost: '',
+  inpatientDays1XCopay: '',
+  inpatientDaysXPlusCopay: '',
+  planReviewNotes: '',
+  // Plate 5 — Problem Reveal (inputs hidden, saved as-is)
+  financialImpactStatement: '',
+  homeCareBurdenConfirmed: '',
+  openToProtectionOptions: null,
+  // Plate 7 — Product Selection
+  selectedProduct: null,
+  hiCarrierName: '',
+  hiGuaranteedIssue: null,
+  hiMonthlyPremium: null,
+  hiDraftDay: null,
+  hiEffectiveDate: '',
+  hiDraftDate: '',
+  hhCarrierName: '',
+  hhMonthlyPremium: null,
+  hhDrugRebateAnnual: null,
+  hhDraftDay: null,
+  hhEffectiveDate: '',
+  hhDraftDate: '',
+  // Legacy — kept for scoring/saves
   enteredPremiums: { c: '', b: '', a: '' },
   selectedOptionKey: '',
-  // Plate 10
   notes: '',
 }
 
@@ -272,6 +289,20 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
             toileting: s.adl_toileting ?? false, transferring: s.adl_transferring ?? false,
             continence: s.adl_continence ?? false, feeding: s.adl_feeding ?? false,
           },
+          prescriptionCount: s.prescription_count ?? null,
+          selectedProduct: s.selected_product || null,
+          hiCarrierName: s.hi_carrier_name || '',
+          hiGuaranteedIssue: s.hi_guaranteed_issue ?? null,
+          hiMonthlyPremium: s.hi_monthly_premium ?? null,
+          hiDraftDay: s.hi_draft_day ?? null,
+          hiEffectiveDate: s.hi_effective_date || '',
+          hiDraftDate: s.hi_draft_date || '',
+          hhCarrierName: s.hh_carrier_name || '',
+          hhMonthlyPremium: s.hh_monthly_premium ?? null,
+          hhDrugRebateAnnual: s.hh_drug_rebate_annual ?? null,
+          hhDraftDay: s.hh_draft_day ?? null,
+          hhEffectiveDate: s.hh_effective_date || '',
+          hhDraftDate: s.hh_draft_date || '',
           enteredPremiums: {
             c: s.entered_option_c_premium ? String(s.entered_option_c_premium) : '',
             b: s.entered_option_b_premium ? String(s.entered_option_b_premium) : '',
@@ -396,20 +427,31 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
       adl_toileting: sessionData.adls.toileting, adl_transferring: sessionData.adls.transferring,
       adl_continence: sessionData.adls.continence, adl_feeding: sessionData.adls.feeding,
       adl_count: adlCount,
+      prescription_count: sessionData.prescriptionCount,
       entered_option_c_premium: Number(sessionData.enteredPremiums.c) || 0,
       entered_option_b_premium: Number(sessionData.enteredPremiums.b) || 0,
       entered_option_a_premium: Number(sessionData.enteredPremiums.a) || 0,
       selected_option_key: sessionData.selectedOptionKey || null,
+      selected_product: sessionData.selectedProduct || null,
+      hi_carrier_name: sessionData.hiCarrierName || null,
+      hi_guaranteed_issue: sessionData.hiGuaranteedIssue,
+      hi_monthly_premium: sessionData.hiMonthlyPremium || null,
+      hi_draft_day: sessionData.hiDraftDay || null,
+      hi_effective_date: sessionData.hiEffectiveDate || null,
+      hi_draft_date: sessionData.hiDraftDate || null,
+      hh_carrier_name: sessionData.hhCarrierName || null,
+      hh_monthly_premium: sessionData.hhMonthlyPremium || null,
+      hh_drug_rebate_annual: sessionData.hhDrugRebateAnnual || null,
+      hh_draft_day: sessionData.hhDraftDay || null,
+      hh_effective_date: sessionData.hhEffectiveDate || null,
+      hh_draft_date: sessionData.hhDraftDate || null,
       notes: sessionData.notes,
       score_total: liveScore.score,
       score_band: liveScore.band,
     }).eq('id', sessionId)
   }
 
-  // ── Option calculations — A/B/C all retained ────────────────────────────────
-  // Option C cap: $900/yr  |  Option B cap: $600/yr  |  Option A cap: $300/yr
-  // All reimbursement display values (monthly, quarterly, annual, effective cost)
-  // derive from the capped annual value so nothing ever exceeds the plan cap.
+  // ── Option calculations — retained for legacy scoring ────────────────────────
   const optionResults = useMemo(() => {
     const DRUG_VALUES = { brand: 25, generic: 10 }
     const OPTION_META = {
@@ -422,9 +464,7 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
       const opt = OPTION_META[key]
       const entered = Number(session.enteredPremiums[key] || 0)
       const annual = entered * 12
-      // Hard-floor annual reimbursement at cap — never exceeds opt.reimbursementCap
       const annualReimb = Math.min(rawMonthlyDrug * 12, opt.reimbursementCap)
-      // Derive monthly and quarterly from capped annual so all figures stay consistent
       const cappedMonthlyReimb = annualReimb / 12
       const qtr = annualReimb / 4
       return {
@@ -445,20 +485,6 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
   const toggleAdl    = (key, val) => setSession((prev) => ({ ...prev, adls: { ...prev.adls, [key]: val } }))
   const adlCount     = Object.values(session.adls).filter(Boolean).length
   const selObj       = OBJECTION_OPTIONS.find((o) => o.key === selectedObjectionKey) || null
-
-  const addDrug = async (drug) => {
-    if (session.medications.some((m) => m.name === drug.name)) return
-    if (sessionId) {
-      await supabase.from('hh_session_drugs').insert({ session_id: sessionId, drug_name: drug.name, drug_type: drug.type, reimbursement_value: drug.type === 'brand' ? 25 : 10 })
-    }
-    setSession((prev) => ({ ...prev, medications: [...prev.medications, drug] }))
-    setDrugSearch(''); setDrugSuggestions([])
-  }
-
-  const removeDrug = async (name) => {
-    if (sessionId) await supabase.from('hh_session_drugs').delete().eq('session_id', sessionId).eq('drug_name', name)
-    setSession((prev) => ({ ...prev, medications: prev.medications.filter((m) => m.name !== name) }))
-  }
 
   const handleLogObjection = async () => {
     if (!sessionId || !selObj || !selectedReactionKey || loggingObjection) return
@@ -499,7 +525,7 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
   return (
     <div style={shell}>
 
-      {/* ── Top Nav Bar — Lead Score immediately right of Call Timer ─────── */}
+      {/* ── Top Nav Bar ──────────────────────────────────────────────────────── */}
       <div style={topbar}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={onClose} style={iconBtn}><ArrowLeft size={18} /> Exit</button>
@@ -518,7 +544,7 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
         </div>
       </div>
 
-      {/* ── Plate Header ───────────────────────────────────────────────────── */}
+      {/* ── Plate Header ───────────────────────────────────────────────────────── */}
       <div style={plateHeader}>
         <div style={{ fontSize: 12, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1 }}>
           Plate {currentPlate} of {NAV_PLATES.length}
@@ -528,19 +554,15 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
         </h1>
       </div>
 
-      {/* ── Plate Content ──────────────────────────────────────────────────── */}
+      {/* ── Plate Content ──────────────────────────────────────────────────────── */}
       <div style={content}>
 
         {/* PLATE 1 — Opening & Verification */}
         {currentPlate === 1 && (
           <div>
-            <ScriptBlock>"Hey {customerName}, this is [Agent Name] calling. Before we get started, I'm going to verify your information real quick — can you confirm your Social Security number and your Medicare ID for me?"</ScriptBlock>
-            <div style={advisoryRow}>
-              <AdvisoryField label="SSN" placeholder="••• – •• – ••••" note="Masked · Advisory only · No entry required" />
-              <AdvisoryField label="Medicare ID (MBI)" placeholder="•••• – •••• – ••••" note="Masked · Advisory only · No entry required" />
-            </div>
-            <ScriptBlock>"Perfect. I'm going to go over your benefits with you today — just want to make sure you understand what your plan covers and where any gaps might be. That work for you?"</ScriptBlock>
-            <InternalNote>If prospect asks why SSN/MBI is needed: "Just standard verification — making sure I'm looking at the right account for you." Do not elaborate. If they refuse → Unwilling to advance.</InternalNote>
+            <ScriptBlock>"I'll be the agent assisting you in reviewing any opportunities for benefits today. {customerName} — we're gonna start by verifying your eligibility."</ScriptBlock>
+            <ScriptBlock>"Are you able to go ahead and grab that red, white, and blue card so we can get this going for ya?"</ScriptBlock>
+            <InternalNote>If no card: No worries, I can verify you with your social as well — ask for last 4 of SSN as fallback.</InternalNote>
             <ChoiceRow>
               <ToggleButton active={session.willingnessToAdvance === true}  onClick={() => update({ willingnessToAdvance: true  })}>Willing to advance</ToggleButton>
               <ToggleButton active={session.willingnessToAdvance === false} onClick={() => update({ willingnessToAdvance: false })}>Unwilling to advance</ToggleButton>
@@ -548,7 +570,7 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
           </div>
         )}
 
-        {/* PLATE 2 — Discovery */}
+        {/* PLATE 2 — Discovery & Qualification */}
         {currentPlate === 2 && (
           <div>
             <ScriptBlock>"So before I pull up your plan details, I want to get a quick picture of your health situation — some benefits may be unlocked depending on what you've got going on."</ScriptBlock>
@@ -585,55 +607,61 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
               <textarea value={session.discoveryNotes} onChange={(e) => update({ discoveryNotes: e.target.value })} style={textarea} placeholder="Additional discovery notes" />
             </Field>
             <InternalNote>Log answers as given. Home preference + hospitalization recency are primary lead score inputs. Do not re-ask on Qualification plate.</InternalNote>
+
+            {/* ── Qualification divider ── */}
+            <div style={sectionDivider}>
+              <div style={dividerLine} />
+              <span style={dividerLabel}>Qualification</span>
+              <div style={dividerLine} />
+            </div>
+
+            <ScriptBlock>"I just need to run through a few quick questions to confirm you qualify for this benefit."</ScriptBlock>
+            <InternalNote>Cross-reference Discovery responses where applicable — do not re-ask questions already answered above.</InternalNote>
+            <ChecklistRow label="Currently in nursing home"                               checked={session.currentlyInNursingHome}        onChange={(v) => update({ currentlyInNursingHome: v })} />
+            <ChecklistRow label="Currently receiving home health care"                    checked={session.currentlyReceivingHomeHealth}   onChange={(v) => update({ currentlyReceivingHomeHealth: v })} />
+            <ChecklistRow label="Alzheimer's, dementia, or memory loss in the last 12 months" checked={session.memoryConditionLast12Months} onChange={(v) => update({ memoryConditionLast12Months: v })} />
+            <div style={{ ...infoCard, marginTop: 14, marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, marginBottom: 10, color: '#1e3a5f' }}>ADLs</div>
+              {Object.entries(session.adls).map(([key, value]) => (
+                <ChecklistRow key={key} label={capitalize(key)} checked={value} onChange={(v) => toggleAdl(key, v)} />
+              ))}
+              <div style={{ marginTop: 8, color: '#4b5563', fontWeight: 600 }}>Selected ADLs: {adlCount}</div>
+              {adlCount >= 2 && <AlertBox color="#dc2626">2 or more ADLs selected — treat as disqualification. Flag for supervisor before proceeding.</AlertBox>}
+            </div>
+            {score.disqualificationReason && <AlertBox color="#dc2626">Disqualified: {score.disqualificationReason}</AlertBox>}
+            {!score.disqualificationReason && (
+              <ChoiceRow>
+                <ToggleButton active={session.qualified === true}  onClick={() => update({ qualified: true  })}>✓ Qualified</ToggleButton>
+                <ToggleButton active={session.qualified === false} onClick={() => update({ qualified: false })}>✗ Not Qualified</ToggleButton>
+              </ChoiceRow>
+            )}
+            {session.qualified && <ScriptBlock>"Okay — looks like you qualify. Let me show you how this works."</ScriptBlock>}
+            <InternalNote>If nursing home = checked OR Alzheimer's/dementia = checked: flag for supervisor. Do not disqualify unilaterally on-call. Currently receiving home health care = active care need (positive signal).</InternalNote>
           </div>
         )}
 
-        {/* PLATE 3 — Medication Capture */}
+        {/* PLATE 3 — Medication Count */}
         {currentPlate === 3 && (
           <div>
-            <ScriptBlock>"Let me just confirm your medications — go ahead and list them for me."</ScriptBlock>
-            <InternalNote>Enter each via Drug Search as prospect speaks. Accuracy here directly affects the rebate calculation shown in options.</InternalNote>
-            <Field label="Drug Search">
-              <div style={{ position: 'relative' }}>
-                <input value={drugSearch} onChange={(e) => setDrugSearch(e.target.value)} style={input} placeholder="Type drug name" />
-                {drugSearch.length >= 2 && drugSuggestions.length > 0 && (
-                  <div style={suggestionsBox}>
-                    {drugSuggestions.map((drug) => (
-                      <button key={drug.name} onClick={() => addDrug(drug)} style={suggestionBtn}>
-                        <span>{drug.name}</span>
-                        <span style={{ fontSize: 11, color: '#9ca3af' }}>{drug.type}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+            <ScriptBlock>"How many different prescriptions do you regularly get filled?"</ScriptBlock>
+            <Field label="Prescription count">
+              <input
+                value={session.prescriptionCount === null ? '' : session.prescriptionCount}
+                onChange={(e) => update({ prescriptionCount: e.target.value === '' ? null : parseInt(e.target.value, 10) })}
+                style={{ ...input, maxWidth: 200 }}
+                type="number"
+                min={0}
+                placeholder="e.g. 3"
+              />
             </Field>
-            <Field label="Selected Drugs">
-              {session.medications.length === 0
-                ? <div style={{ color: '#6b7280' }}>No drugs added yet.</div>
-                : session.medications.map((drug) => (
-                  <div key={drug.name} style={chipRow}>
-                    <div>
-                      <span style={{ fontWeight: 600 }}>{drug.name}</span>
-                      <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 8 }}>{drug.type} · ${drug.type === 'brand' ? 25 : 10}/mo rebate</span>
-                    </div>
-                    <button onClick={() => removeDrug(drug.name)} style={chipRemove}>Remove</button>
-                  </div>
-                ))
-              }
-            </Field>
-            {session.medications.length > 0 && (
-              <div style={reimburseSummary}>
-                Monthly drug rebate value: <strong>${session.medications.reduce((s, d) => s + (d.type === 'brand' ? 25 : 10), 0)}/mo</strong>
-              </div>
-            )}
+            <InternalNote>Medication count feeds qualification scoring. 3 or more prescriptions is a positive signal.</InternalNote>
           </div>
         )}
 
         {/* PLATE 4 — Plan Review */}
         {currentPlate === 4 && (
           <div>
-            <ScriptBlock>"Ok {customerName}, on the surface, this looks like a really good plan for you. I am beginning to see why you went with this plan."</ScriptBlock>
+            <ScriptBlock>"Ok {customerName}, on the surface this looks like a really good plan for you. I am beginning to see why you went with this plan."</ScriptBlock>
             <ScriptBlock>"We don't need to change this plan at all."</ScriptBlock>
             <InternalNote>Open UNL and begin filling in info for the quote while reviewing the plan. Call out the positives — for example: $0 PCP CoPay, Low or No Medical/Drug Deductible, Dental/Vision/Hearing coverage, Part B Giveback.</InternalNote>
             <Field label="Call out the positives (notes)">
@@ -641,30 +669,6 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
             </Field>
             <ScriptBlock>"So {customerName}, are you happy with this plan? Any complaints at all?"</ScriptBlock>
             <ScriptBlock>"I am glad to hear that you are happy with your plan. Now let's check out your hospital coverage."</ScriptBlock>
-            <Field label="Ambulance Copay">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#6b7280' }}>$</span>
-                <input value={session.ambulanceCopay} onChange={(e) => update({ ambulanceCopay: e.target.value })} style={{ ...input, maxWidth: 200 }} type="number" placeholder="0.00" />
-              </div>
-            </Field>
-            <Field label="Home Health Cost / Structure">
-              <textarea value={session.homeHealthCost} onChange={(e) => update({ homeHealthCost: e.target.value })} style={textarea} placeholder="Describe current plan home health coverage structure / amount" />
-            </Field>
-            <Field label="Inpatient Hospital — Days 1 through X copay">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#6b7280' }}>$</span>
-                <input value={session.inpatientDays1XCopay} onChange={(e) => update({ inpatientDays1XCopay: e.target.value })} style={{ ...input, maxWidth: 200 }} type="number" placeholder="0.00" />
-                <span style={{ color: '#6b7280', fontSize: 13 }}>per day</span>
-              </div>
-            </Field>
-            <Field label="Inpatient Hospital — Day X+ copay">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#6b7280' }}>$</span>
-                <input value={session.inpatientDaysXPlusCopay} onChange={(e) => update({ inpatientDaysXPlusCopay: e.target.value })} style={{ ...input, maxWidth: 200 }} type="number" placeholder="0.00" />
-                <span style={{ color: '#6b7280', fontSize: 13 }}>per day</span>
-              </div>
-            </Field>
-            <div style={gapCallout}>"The gap I'm seeing is that there's no extended protection in place for what happens after those initial days — and that's where costs start to add up fast."</div>
           </div>
         )}
 
@@ -689,51 +693,14 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
               ))}
             </div>
             <ScriptBlock>"Now having Medicare Part A, B, C, and D is very good — however it is incomplete if you want to avoid unnecessary expensive hospital costs. Does that make sense?"</ScriptBlock>
-            <Field label="Financial Concern Capture">
-              <textarea value={session.financialImpactStatement} onChange={(e) => update({ financialImpactStatement: e.target.value })} style={textarea} placeholder="Capture their financial concern / reaction" />
-            </Field>
-            <Field label="Home Care Cost Burden">
-              <textarea value={session.homeCareBurdenConfirmed} onChange={(e) => update({ homeCareBurdenConfirmed: e.target.value })} style={textarea} placeholder="Capture how burdensome the out-of-pocket cost would be for them" />
-            </Field>
-            <ScriptBlock>"Would it make sense to at least look at what options might help protect you from that?"</ScriptBlock>
-            <ChoiceRow>
-              <ToggleButton active={session.openToProtectionOptions === true}  onClick={() => update({ openToProtectionOptions: true  })}>Yes</ToggleButton>
-              <ToggleButton active={session.openToProtectionOptions === false} onClick={() => update({ openToProtectionOptions: false })}>No</ToggleButton>
-            </ChoiceRow>
           </div>
         )}
 
-        {/* PLATE 6 — Qualification */}
+        {/* PLATE 6 — Medicare Education */}
         {currentPlate === 6 && (
           <div>
-            <ScriptBlock>"I just need to run through a few quick questions to confirm you qualify for this benefit."</ScriptBlock>
-            <InternalNote>Cross-reference Discovery responses where applicable — do not re-ask questions already answered on Plate 2.</InternalNote>
-            <ChecklistRow label="Currently in nursing home"                               checked={session.currentlyInNursingHome}        onChange={(v) => update({ currentlyInNursingHome: v })} />
-            <ChecklistRow label="Currently receiving home health care"                    checked={session.currentlyReceivingHomeHealth}   onChange={(v) => update({ currentlyReceivingHomeHealth: v })} />
-            <ChecklistRow label="Alzheimer's, dementia, or memory loss in the last 12 months" checked={session.memoryConditionLast12Months} onChange={(v) => update({ memoryConditionLast12Months: v })} />
-            <div style={{ ...infoCard, marginTop: 14, marginBottom: 14 }}>
-              <div style={{ fontWeight: 700, marginBottom: 10, color: '#1e3a5f' }}>ADLs</div>
-              {Object.entries(session.adls).map(([key, value]) => (
-                <ChecklistRow key={key} label={capitalize(key)} checked={value} onChange={(v) => toggleAdl(key, v)} />
-              ))}
-              <div style={{ marginTop: 8, color: '#4b5563', fontWeight: 600 }}>Selected ADLs: {adlCount}</div>
-              {adlCount >= 2 && <AlertBox color="#dc2626">2 or more ADLs selected — treat as disqualification. Flag for supervisor before proceeding.</AlertBox>}
-            </div>
-            {score.disqualificationReason && <AlertBox color="#dc2626">Disqualified: {score.disqualificationReason}</AlertBox>}
-            {!score.disqualificationReason && (
-              <ChoiceRow>
-                <ToggleButton active={session.qualified === true}  onClick={() => update({ qualified: true  })}>✓ Qualified</ToggleButton>
-                <ToggleButton active={session.qualified === false} onClick={() => update({ qualified: false })}>✗ Not Qualified</ToggleButton>
-              </ChoiceRow>
-            )}
-            {session.qualified && <ScriptBlock>"Okay — looks like you qualify. Let me show you how this works."</ScriptBlock>}
-            <InternalNote>If nursing home = checked OR Alzheimer's/dementia = checked: flag for supervisor. Do not disqualify unilaterally on-call. Currently receiving home health care = active care need (positive signal).</InternalNote>
-          </div>
-        )}
-
-        {/* PLATE 7 — Medicare Education */}
-        {currentPlate === 7 && (
-          <div>
+            <ScriptBlock>"This is why extended hospital coverage is needed. Some people refer to this as Part E. What is great about this is that your Part E is going to be way less than your Part B. Now {customerName}, I am going to share with you the coverage that should have been presented to you when you first got on this plan."</ScriptBlock>
+            <ScriptBlock>"{customerName}, I am going to share with you the coverage that should have been presented to you when you first got on this plan."</ScriptBlock>
             <ScriptBlock>"Before I show you your options, let me give you a quick picture of how Medicare is structured — because most people were never fully explained this."</ScriptBlock>
             <div style={medicarePartsRow}>
               {[
@@ -762,61 +729,152 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
           </div>
         )}
 
-        {/* PLATE 8 — Solution Reveal + Close */}
-        {currentPlate === 8 && (
+        {/* PLATE 7 — Product Selection */}
+        {currentPlate === 7 && (
           <div>
-            <div style={leadScoreBanner(liveScore.band)}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span style={{ fontSize: 11, opacity: 0.7, textTransform: 'uppercase', letterSpacing: 1 }}>Lead Score</span>
-                <span style={{ fontSize: 34, fontWeight: 800, lineHeight: 1 }}>{liveScore.score}</span>
-              </div>
-              <div style={{ width: 1, background: 'rgba(255,255,255,0.2)', alignSelf: 'stretch' }} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span style={{ fontSize: 14, fontWeight: 700 }}>{liveScore.band}</span>
-                <span style={{ fontSize: 11, opacity: 0.7 }}>Agent selects the best option manually</span>
-              </div>
+            <ScriptBlock>"{customerName}, I am going to have you write down your option so that it will be easier for you to understand. If you are able to, go ahead and grab something to write with and let me know when you are ready."</ScriptBlock>
+
+            {/* Product cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+              {/* Hospital Indemnity */}
+              <button
+                onClick={() => update({ selectedProduct: 'hospital_indemnity' })}
+                style={{
+                  background: '#fff',
+                  border: `2px solid ${session.selectedProduct === 'hospital_indemnity' ? '#2563eb' : '#e5e7eb'}`,
+                  borderRadius: 16,
+                  padding: 24,
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'border-color 0.15s',
+                }}
+              >
+                <div style={{ fontSize: 36, marginBottom: 8 }}>🏥</div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: session.selectedProduct === 'hospital_indemnity' ? '#2563eb' : '#111827' }}>Hospital Indemnity</div>
+              </button>
+
+              {/* Home Healthcare */}
+              <button
+                onClick={() => update({ selectedProduct: 'home_healthcare' })}
+                style={{
+                  background: '#fff',
+                  border: `2px solid ${session.selectedProduct === 'home_healthcare' ? '#16a34a' : '#e5e7eb'}`,
+                  borderRadius: 16,
+                  padding: 24,
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'border-color 0.15s',
+                }}
+              >
+                <div style={{ fontSize: 36, marginBottom: 8 }}>🏠</div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: session.selectedProduct === 'home_healthcare' ? '#16a34a' : '#111827' }}>Home Healthcare</div>
+              </button>
             </div>
 
-            <ScriptBlock>"This is why extended hospital coverage is needed. Some people refer to this as Part E. What is great about this is that your Part E is going to be way less than your Part B."</ScriptBlock>
-            <ScriptBlock>"{customerName}, I am going to share with you the coverage that should have been presented to you when you first got on this plan."</ScriptBlock>
-            <ScriptBlock>"{customerName}, I am going to have you write down your option so that it will be easier for you to understand. If you are able to, go ahead and grab something to write with and let me know when you are ready."</ScriptBlock>
-            <InternalNote>Present ONE option only. Build the option using the premium input below. Do not reference Option 2 or multiple options.</InternalNote>
-
-            {(() => {
-              const option = optionResults[0]
-              return (
-                <div style={{ ...optionCard, maxWidth: 420, marginBottom: 20, borderColor: session.selectedOptionKey === option.code ? '#2563eb' : '#e5e7eb', borderWidth: session.selectedOptionKey === option.code ? 2 : 1 }}>
-                  <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, color: '#6b7280' }}>Your Option</div>
-                  <div style={{ fontSize: 30, fontWeight: 700, margin: '6px 0 2px' }}>${option.benefitAmount.toLocaleString()}</div>
-                  <div style={{ color: '#6b7280', marginBottom: 12, fontSize: 13 }}>Home health benefit</div>
-                  <Field label="Entered Monthly Premium">
-                    <input value={session.enteredPremiums[option.code]} onChange={(e) => updatePremium(option.code, e.target.value)} style={input} type="number" placeholder="$0.00" />
-                  </Field>
-                  <div style={{ marginTop: 'auto' }}>
-                    <Metric label="Annual Premium"             value={`$${option.annualPremiumCost.toFixed(2)}`} />
-                    <Metric label="Drug Reimbursement"         value={`$${option.monthlyDrugReimbursement.toFixed(2)}/mo`} />
-                    <Metric label="Quarterly Reimbursement"    value={`$${option.quarterlyReimbursement.toFixed(2)}`} />
-                    <Metric label="Annual Reimbursement Value" value={`$${option.annualReimbursementValue.toFixed(2)}`} />
-                    <Metric label="Effective Monthly Cost"     value={`$${option.effectiveMonthlyCost.toFixed(2)}`} strong />
-                    <Metric label="Effective Annual Cost"      value={`$${option.effectiveAnnualCost.toFixed(2)}`} />
+            {/* Hospital Indemnity detail capture */}
+            {session.selectedProduct === 'hospital_indemnity' && (
+              <div style={{ background: '#eff6ff', border: '2px solid #93c5fd', borderRadius: 16, padding: 24, marginBottom: 20 }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: '#1d4ed8', marginBottom: 18 }}>Hospital Indemnity Details</div>
+                <Field label="Carrier Name">
+                  <input value={session.hiCarrierName} onChange={(e) => update({ hiCarrierName: e.target.value })} style={input} type="text" placeholder="Carrier name" />
+                </Field>
+                <Field label="Guaranteed Issue?">
+                  <ChoiceRow>
+                    <ToggleButton active={session.hiGuaranteedIssue === true}  onClick={() => update({ hiGuaranteedIssue: true  })}>Yes</ToggleButton>
+                    <ToggleButton active={session.hiGuaranteedIssue === false} onClick={() => update({ hiGuaranteedIssue: false })}>No</ToggleButton>
+                  </ChoiceRow>
+                </Field>
+                <Field label="Monthly Premium ($)">
+                  <input
+                    value={session.hiMonthlyPremium === null ? '' : session.hiMonthlyPremium}
+                    onChange={(e) => update({ hiMonthlyPremium: e.target.value === '' ? null : Number(e.target.value) })}
+                    style={{ ...input, maxWidth: 200 }}
+                    type="number"
+                    min={0}
+                    placeholder="0.00"
+                  />
+                </Field>
+                <Field label="Annual Premium (auto-calculated)">
+                  <div style={{ ...input, maxWidth: 200, background: '#f3f4f6', color: '#374151', fontWeight: 700, cursor: 'default' }}>
+                    {formatCurrency((Number(session.hiMonthlyPremium) || 0) * 12)}
                   </div>
-                  <button onClick={() => update({ selectedOptionKey: option.code })} style={{ ...selectOptionBtn, background: session.selectedOptionKey === option.code ? '#1d4ed8' : '#f3f4f6', color: session.selectedOptionKey === option.code ? '#fff' : '#374151' }}>
-                    {session.selectedOptionKey === option.code ? '✓ Selected' : 'Select Your Option'}
-                  </button>
-                </div>
-              )
-            })()}
+                </Field>
+                <Field label="Recurring Draft Day (1–31)">
+                  <input
+                    value={session.hiDraftDay === null ? '' : session.hiDraftDay}
+                    onChange={(e) => update({ hiDraftDay: e.target.value === '' ? null : parseInt(e.target.value, 10) })}
+                    style={{ ...input, maxWidth: 120 }}
+                    type="number"
+                    min={1}
+                    max={31}
+                    placeholder="e.g. 1"
+                  />
+                </Field>
+                <Field label="Effective Date">
+                  <input value={session.hiEffectiveDate} onChange={(e) => update({ hiEffectiveDate: e.target.value })} style={{ ...input, maxWidth: 200 }} type="date" />
+                </Field>
+                <Field label="Draft Date">
+                  <input value={session.hiDraftDate} onChange={(e) => update({ hiDraftDate: e.target.value })} style={{ ...input, maxWidth: 200 }} type="date" />
+                </Field>
+              </div>
+            )}
 
-            <ScriptBlock>"Both of these benefits work together — your home healthcare coverage and your hospital copay protection. The goal is to make sure that if something happens, you are fully covered and your family is not left with a bill."</ScriptBlock>
-            <ScriptBlock>"{customerName}, based on everything we have gone over today — would you like to move forward and get this protection in place for you?"</ScriptBlock>
-            {session.selectedOptionKey && (
-              <ScriptBlock>"That's a solid choice. You can always adjust your coverage later if your needs change — I'll be here as your Medicare advisor moving forward."</ScriptBlock>
+            {/* Home Healthcare detail capture */}
+            {session.selectedProduct === 'home_healthcare' && (
+              <div style={{ background: '#f0fdf4', border: '2px solid #86efac', borderRadius: 16, padding: 24, marginBottom: 20 }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: '#15803d', marginBottom: 18 }}>Home Healthcare Details</div>
+                <Field label="Carrier Name">
+                  <input value={session.hhCarrierName} onChange={(e) => update({ hhCarrierName: e.target.value })} style={input} type="text" placeholder="Carrier name" />
+                </Field>
+                <Field label="Monthly Premium ($)">
+                  <input
+                    value={session.hhMonthlyPremium === null ? '' : session.hhMonthlyPremium}
+                    onChange={(e) => update({ hhMonthlyPremium: e.target.value === '' ? null : Number(e.target.value) })}
+                    style={{ ...input, maxWidth: 200 }}
+                    type="number"
+                    min={0}
+                    placeholder="0.00"
+                  />
+                </Field>
+                <Field label="Annual Premium (auto-calculated)">
+                  <div style={{ ...input, maxWidth: 200, background: '#f3f4f6', color: '#374151', fontWeight: 700, cursor: 'default' }}>
+                    {formatCurrency((Number(session.hhMonthlyPremium) || 0) * 12)}
+                  </div>
+                </Field>
+                <Field label="Drug Rebate Amount — Annual ($)">
+                  <input
+                    value={session.hhDrugRebateAnnual === null ? '' : session.hhDrugRebateAnnual}
+                    onChange={(e) => update({ hhDrugRebateAnnual: e.target.value === '' ? null : Number(e.target.value) })}
+                    style={{ ...input, maxWidth: 200 }}
+                    type="number"
+                    min={0}
+                    placeholder="0.00"
+                  />
+                </Field>
+                <Field label="Recurring Draft Day (1–31)">
+                  <input
+                    value={session.hhDraftDay === null ? '' : session.hhDraftDay}
+                    onChange={(e) => update({ hhDraftDay: e.target.value === '' ? null : parseInt(e.target.value, 10) })}
+                    style={{ ...input, maxWidth: 120 }}
+                    type="number"
+                    min={1}
+                    max={31}
+                    placeholder="e.g. 1"
+                  />
+                </Field>
+                <Field label="Effective Date">
+                  <input value={session.hhEffectiveDate} onChange={(e) => update({ hhEffectiveDate: e.target.value })} style={{ ...input, maxWidth: 200 }} type="date" />
+                </Field>
+                <Field label="Draft Date">
+                  <input value={session.hhDraftDate} onChange={(e) => update({ hhDraftDate: e.target.value })} style={{ ...input, maxWidth: 200 }} type="date" />
+                </Field>
+              </div>
             )}
           </div>
         )}
 
-        {/* PLATE 9 — Final Close */}
-        {currentPlate === 9 && (
+        {/* PLATE 8 — Final Close */}
+        {currentPlate === 8 && (
           <div>
             <ScriptBlock>"Let's go ahead and move forward — I'll get this processed for you."</ScriptBlock>
             <InternalNote>Lead with the assumptive forward move. Only use the timing line below if prospect shows friction — it is a hesitation handle, not the primary close opener.</InternalNote>
@@ -841,7 +899,7 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
           <ArrowLeft size={16} /> Back
         </button>
         <button onClick={handleSaveAndNext} disabled={currentPlate === NAV_PLATES.length} style={primaryBtn}>
-          {currentPlate === 8 ? 'Proceed to Final Close' : 'Save & Next'} <ArrowRight size={16} />
+          {currentPlate === 7 ? 'Proceed to Final Close' : 'Save & Next'} <ArrowRight size={16} />
         </button>
       </div>
 
@@ -984,3 +1042,6 @@ const medicarePartsRow = { display: 'flex', gap: 10, marginBottom: 20 }
 const partECallout    = { background: '#fef2f2', border: '2px solid #fca5a5', borderRadius: 14, padding: 18, marginBottom: 24 }
 const reimburseSummary = { background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 16px', marginTop: 12, fontSize: 14, color: '#14532d' }
 const selectOptionBtn  = { marginTop: 14, width: '100%', border: 'none', borderRadius: 10, padding: '10px 0', cursor: 'pointer', fontWeight: 700, fontSize: 14 }
+const sectionDivider  = { display: 'flex', alignItems: 'center', gap: 12, margin: '28px 0 18px' }
+const dividerLine     = { flex: 1, height: 1, background: '#e5e7eb' }
+const dividerLabel    = { fontSize: 13, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: 1 }
