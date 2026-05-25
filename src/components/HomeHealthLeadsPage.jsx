@@ -92,7 +92,7 @@ export default function HomeHealthLeadsPage({ dispositions, setDispositions }) {
   }
 
   const deleteLead = async (leadId) => {
-    const { error } = await supabase.from('hh_leads').delete().eq('id', leadId)
+    const { error } = await supabase.from('hh_leads').delete().eq('lead_id', leadId)
     if (error) {
       console.error('Error deleting lead:', error)
       return
@@ -123,7 +123,7 @@ export default function HomeHealthLeadsPage({ dispositions, setDispositions }) {
     const { data: sessions, error } = await supabase
       .from('hh_plate_sessions')
       .select('*')
-      .eq('lead_id', lead.id)
+      .eq('lead_id', lead.lead_id || lead.id)
       .order('updated_at', { ascending: false })
       .limit(1)
 
@@ -183,7 +183,7 @@ export default function HomeHealthLeadsPage({ dispositions, setDispositions }) {
     const { data: updatedLead, error: leadError } = await supabase
       .from('hh_leads')
       .update(leadPayload)
-      .eq('id', selectedLead.id)
+      .eq('lead_id', selectedLead.lead_id || selectedLead.id)
       .select()
       .single()
 
@@ -298,8 +298,8 @@ export default function HomeHealthLeadsPage({ dispositions, setDispositions }) {
       .from('hh_leads')
       .update({
         status: payload.outcome,
-        latest_score_total: payload.score ?? 0,
-        latest_score_band: payload.scoreBand ?? '',
+        score: payload.score ?? 0,
+        score_band: payload.scoreBand ?? '',
         latest_qualified: payload.qualified ?? false,
         latest_disqualification_reason: payload.disqualificationReason ?? '',
         latest_primary_loss_reason: payload.primaryLossReason || null,
@@ -309,15 +309,15 @@ export default function HomeHealthLeadsPage({ dispositions, setDispositions }) {
         notes: payload.notes ?? '',
         updated_at: new Date().toISOString(),
       })
-      .eq('id', leadId)
+      .eq('lead_id', leadId)
     if (leadError) console.error('Error updating lead:', leadError)
 
     setDispositions([payload, ...dispositions])
-    setLeads(leads.map((lead) => lead.id === leadId ? {
+    setLeads(leads.map((lead) => (lead.lead_id || lead.id) === leadId ? {
       ...lead,
       status: payload.outcome,
-      latest_score_total: payload.score ?? lead.latest_score_total ?? 0,
-      latest_score_band: payload.scoreBand ?? lead.latest_score_band ?? '',
+      score: payload.score ?? lead.score ?? 0,
+      score_band: payload.scoreBand ?? lead.score_band ?? '',
       latest_qualified: payload.qualified ?? lead.latest_qualified ?? false,
       latest_disqualification_reason: payload.disqualificationReason ?? lead.latest_disqualification_reason ?? '',
       latest_primary_loss_reason: payload.primaryLossReason ?? lead.latest_primary_loss_reason ?? '',

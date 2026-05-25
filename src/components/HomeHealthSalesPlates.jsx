@@ -598,8 +598,8 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
         const { error: leadsErr } = await supabase.from('hh_leads').update({
           status: payload.outcome,
           outcome: payload.outcome,
-          latest_score_total: liveScore.score,
-          latest_score_band: liveScore.band,
+          score: liveScore.score,
+          score_band: liveScore.band,
           latest_qualified: qualifiedValue,
           latest_disqualification_reason: score.disqualificationReason || '',
           latest_primary_loss_reason: payload.primaryLossReason || null,
@@ -612,7 +612,7 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
           hh_carrier_name: session.hhCarrierName || null,
           hh_monthly_premium: session.hhMonthlyPremium || null,
           updated_at: endedAt,
-        }).eq('id', leadId)
+        }).eq('lead_id', leadId)
         if (leadsErr) console.error('hh_leads update failed:', leadsErr)
       }
     }
