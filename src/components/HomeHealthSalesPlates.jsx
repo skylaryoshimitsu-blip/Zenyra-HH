@@ -510,8 +510,19 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
     const timeToDisp = Number((minutesBetween(callStartedAt, endedAt) || 0).toFixed(1))
     const progress = buildPlateProgress(currentPlate)
 
+    console.log('handleDispositionSave fired:', {
+      leadId,
+      sessionId,
+      outcome: payload.outcome,
+      liveScore: liveScore.score,
+    })
+
+    if (!sessionId) {
+      console.error('handleDispositionSave: sessionId is null — all DB writes skipped')
+    }
+
     if (sessionId) {
-      await supabase.from('hh_plate_sessions').update({
+      const { error: plateSessionErr } = await supabase.from('hh_plate_sessions').update({
         call_ended_at: endedAt,
         disposition_logged_at: endedAt,
         call_duration_minutes: durationMins,
@@ -522,8 +533,9 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
         disqualification_reason: score.disqualificationReason || '',
         selected_option_key: session.selectedOptionKey || null,
       }).eq('id', sessionId)
+      if (plateSessionErr) console.error('hh_plate_sessions update failed:', plateSessionErr)
 
-      await supabase.from('hh_calls').insert({
+      const { error: callsErr } = await supabase.from('hh_calls').insert({
         lead_id: leadId,
         session_id: sessionId,
         outcome: payload.outcome,
@@ -550,8 +562,9 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
         time_to_disposition_minutes: timeToDisp,
         notes: session.notes || payload.notes || '',
       })
+      if (callsErr) console.error('hh_calls insert failed:', callsErr)
 
-      await supabase.from('hh_dispositions').insert({
+      const { error: dispositionsErr } = await supabase.from('hh_dispositions').insert({
         lead_id: leadId,
         session_id: sessionId,
         outcome: payload.outcome,
@@ -577,8 +590,9 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
         time_to_disposition_minutes: timeToDisp,
         notes: session.notes || payload.notes || '',
       })
+      if (dispositionsErr) console.error('hh_dispositions insert failed:', dispositionsErr)
 
-      await supabase.from('hh_leads').update({
+      const { error: leadsErr } = await supabase.from('hh_leads').update({
         status: payload.outcome,
         outcome: payload.outcome,
         latest_score_total: liveScore.score,
@@ -596,6 +610,7 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
         hh_monthly_premium: session.hhMonthlyPremium || null,
         updated_at: endedAt,
       }).eq('id', leadId)
+      if (leadsErr) console.error('hh_leads update failed:', leadsErr)
     }
 
     onDispositionSave?.({ ...payload, score: liveScore.score, scoreBand: liveScore.band, qualified: qualifiedValue, disqualificationReason: score.disqualificationReason || '', notes: session.notes || payload.notes })
