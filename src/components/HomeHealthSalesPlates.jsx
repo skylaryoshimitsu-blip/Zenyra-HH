@@ -511,10 +511,91 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
     const progress = buildPlateProgress(currentPlate)
 
     if (sessionId) {
-      await supabase.from('hh_plate_sessions').update({ call_ended_at: endedAt, disposition_logged_at: endedAt, call_duration_minutes: durationMins, time_to_disposition_minutes: timeToDisp, score_total: liveScore.score, score_band: liveScore.band, qualified: qualifiedValue, disqualification_reason: score.disqualificationReason || '', selected_option_key: session.selectedOptionKey || null }).eq('id', sessionId)
-      await supabase.from('hh_calls').insert({ lead_id: leadId, session_id: sessionId, lead_name_snapshot: customerName, state_snapshot: leadData?.state || '', score_total: liveScore.score, score_band: liveScore.band, qualified: qualifiedValue, disqualification_reason: score.disqualificationReason || '', plate_progress: progress, call_started_at: callStartedAt, call_ended_at: endedAt, disposition_logged_at: endedAt, call_duration_minutes: durationMins, time_to_disposition_minutes: timeToDisp, outcome: payload.outcome, notes: session.notes || payload.notes || '' })
-      await supabase.from('hh_dispositions').insert({ lead_id: leadId, session_id: sessionId, outcome: payload.outcome, lead_name_snapshot: customerName, state_snapshot: leadData?.state || '', score_total: liveScore.score, score_band: liveScore.band, qualified: qualifiedValue, disqualification_reason: score.disqualificationReason || '', call_started_at: callStartedAt, call_ended_at: endedAt, disposition_logged_at: endedAt, call_duration_minutes: durationMins, time_to_disposition_minutes: timeToDisp, notes: session.notes || payload.notes || '' })
-      await supabase.from('hh_leads').update({ status: payload.outcome, latest_score_total: liveScore.score, latest_score_band: liveScore.band, latest_qualified: qualifiedValue, latest_disqualification_reason: score.disqualificationReason || '', updated_at: endedAt }).eq('id', leadId)
+      await supabase.from('hh_plate_sessions').update({
+        call_ended_at: endedAt,
+        disposition_logged_at: endedAt,
+        call_duration_minutes: durationMins,
+        time_to_disposition_minutes: timeToDisp,
+        score_total: liveScore.score,
+        score_band: liveScore.band,
+        qualified: qualifiedValue,
+        disqualification_reason: score.disqualificationReason || '',
+        selected_option_key: session.selectedOptionKey || null,
+      }).eq('id', sessionId)
+
+      await supabase.from('hh_calls').insert({
+        lead_id: leadId,
+        session_id: sessionId,
+        outcome: payload.outcome,
+        qualified: qualifiedValue,
+        disqualification_reason: score.disqualificationReason || '',
+        score_total: liveScore.score,
+        score_band: liveScore.band,
+        primary_loss_reason: payload.primaryLossReason || null,
+        primary_objection: payload.primaryObjection || null,
+        breakdown_point: payload.breakdownPoint || null,
+        likely_root_cause: payload.likelyRootCause || null,
+        selected_product: session.selectedProduct || null,
+        hi_carrier_name: session.hiCarrierName || null,
+        hi_monthly_premium: session.hiMonthlyPremium || null,
+        hh_carrier_name: session.hhCarrierName || null,
+        hh_monthly_premium: session.hhMonthlyPremium || null,
+        lead_name_snapshot: customerName,
+        state_snapshot: leadData?.state || '',
+        plate_progress: progress,
+        call_started_at: callStartedAt,
+        call_ended_at: endedAt,
+        disposition_logged_at: endedAt,
+        call_duration_minutes: durationMins,
+        time_to_disposition_minutes: timeToDisp,
+        notes: session.notes || payload.notes || '',
+      })
+
+      await supabase.from('hh_dispositions').insert({
+        lead_id: leadId,
+        session_id: sessionId,
+        outcome: payload.outcome,
+        qualified: qualifiedValue,
+        disqualification_reason: score.disqualificationReason || '',
+        score_total: liveScore.score,
+        score_band: liveScore.band,
+        primary_loss_reason: payload.primaryLossReason || null,
+        primary_objection: payload.primaryObjection || null,
+        breakdown_point: payload.breakdownPoint || null,
+        likely_root_cause: payload.likelyRootCause || null,
+        selected_product: session.selectedProduct || null,
+        hi_carrier_name: session.hiCarrierName || null,
+        hi_monthly_premium: session.hiMonthlyPremium || null,
+        hh_carrier_name: session.hhCarrierName || null,
+        hh_monthly_premium: session.hhMonthlyPremium || null,
+        lead_name_snapshot: customerName,
+        state_snapshot: leadData?.state || '',
+        call_started_at: callStartedAt,
+        call_ended_at: endedAt,
+        disposition_logged_at: endedAt,
+        call_duration_minutes: durationMins,
+        time_to_disposition_minutes: timeToDisp,
+        notes: session.notes || payload.notes || '',
+      })
+
+      await supabase.from('hh_leads').update({
+        status: payload.outcome,
+        outcome: payload.outcome,
+        latest_score_total: liveScore.score,
+        latest_score_band: liveScore.band,
+        latest_qualified: qualifiedValue,
+        latest_disqualification_reason: score.disqualificationReason || '',
+        latest_primary_loss_reason: payload.primaryLossReason || null,
+        latest_primary_objection: payload.primaryObjection || null,
+        latest_breakdown_point: payload.breakdownPoint || null,
+        latest_likely_root_cause: payload.likelyRootCause || null,
+        selected_product: session.selectedProduct || null,
+        hi_carrier_name: session.hiCarrierName || null,
+        hi_monthly_premium: session.hiMonthlyPremium || null,
+        hh_carrier_name: session.hhCarrierName || null,
+        hh_monthly_premium: session.hhMonthlyPremium || null,
+        updated_at: endedAt,
+      }).eq('id', leadId)
     }
 
     onDispositionSave?.({ ...payload, score: liveScore.score, scoreBand: liveScore.band, qualified: qualifiedValue, disqualificationReason: score.disqualificationReason || '', notes: session.notes || payload.notes })
