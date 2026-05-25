@@ -254,6 +254,10 @@ export default function HomeHealthLeadsPage({ dispositions, setDispositions }) {
   }
 
   const applyDisposition = async (leadId, payload) => {
+    if (!leadId) {
+      console.error('Path B: leadId undefined — skipping disposition write')
+      return
+    }
     const dbPayload = {
       lead_id: leadId,
       outcome: payload.outcome,
@@ -492,7 +496,7 @@ export default function HomeHealthLeadsPage({ dispositions, setDispositions }) {
           leadData={selectedLead}
           onClose={() => { setShowPlates(false); setSelectedLead(null) }}
           onDispositionSave={(payload) => {
-            applyDisposition(selectedLead.id, payload)
+            applyDisposition(selectedLead.id || selectedLead.lead_id, payload)
             setShowPlates(false)
             setSelectedLead(null)
           }}
@@ -504,7 +508,7 @@ export default function HomeHealthLeadsPage({ dispositions, setDispositions }) {
           lead={selectedLead}
           onClose={() => { setShowDisposition(false); setSelectedLead(null) }}
           onSave={(payload) => {
-            applyDisposition(selectedLead.id, payload)
+            applyDisposition(selectedLead.id || selectedLead.lead_id, payload)
             setShowDisposition(false)
             setSelectedLead(null)
           }}

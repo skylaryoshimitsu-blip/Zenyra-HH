@@ -996,14 +996,14 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
                 <SummaryRow label="HI Carrier"          value={session.hiCarrierName || '—'} />
                 <SummaryRow label="HI Monthly Premium"  value={session.hiMonthlyPremium ? `$${session.hiMonthlyPremium}/mo` : '—'} />
                 <SummaryRow label="Guaranteed Issue"    value={session.hiGuaranteedIssue === true ? 'Yes' : session.hiGuaranteedIssue === false ? 'No' : '—'} />
-                <SummaryRow label="Draft Day"           value={session.hiDraftDay || '—'} />
+                <SummaryRow label="Recurring Draft Day"  value={session.hiDraftDay ? `Day ${session.hiDraftDay} of month` : '—'} />
                 <SummaryRow label="Effective Date"      value={session.hiEffectiveDate || '—'} />
               </>}
               {session.selectedProduct === 'home_healthcare' && <>
                 <SummaryRow label="HHC Carrier"          value={session.hhCarrierName || '—'} />
                 <SummaryRow label="HHC Monthly Premium"  value={session.hhMonthlyPremium ? `$${session.hhMonthlyPremium}/mo` : '—'} />
                 <SummaryRow label="Drug Rebate (Annual)" value={session.hhDrugRebateAnnual ? `$${session.hhDrugRebateAnnual}/yr` : '—'} />
-                <SummaryRow label="Draft Day"            value={session.hhDraftDay || '—'} />
+                <SummaryRow label="Recurring Draft Day"   value={session.hhDraftDay ? `Day ${session.hhDraftDay} of month` : '—'} />
                 <SummaryRow label="Effective Date"       value={session.hhEffectiveDate || '—'} />
               </>}
             </div>
