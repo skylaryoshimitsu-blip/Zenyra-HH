@@ -244,7 +244,7 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
   const [callStartedAt]                           = useState(new Date().toISOString())
   const [session, setSession]                     = useState(emptySession)
 
-  const leadId      = leadData?.id || leadData?.lead_id
+  const leadId      = leadData?.id || leadData?.lead_id || null
   const customerName = leadData?.full_name || 'Customer'
 
   // ── Session init ────────────────────────────────────────────────────────────
@@ -592,25 +592,29 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
       })
       if (dispositionsErr) console.error('hh_dispositions insert failed:', dispositionsErr)
 
-      const { error: leadsErr } = await supabase.from('hh_leads').update({
-        status: payload.outcome,
-        outcome: payload.outcome,
-        latest_score_total: liveScore.score,
-        latest_score_band: liveScore.band,
-        latest_qualified: qualifiedValue,
-        latest_disqualification_reason: score.disqualificationReason || '',
-        latest_primary_loss_reason: payload.primaryLossReason || null,
-        latest_primary_objection: payload.primaryObjection || null,
-        latest_breakdown_point: payload.breakdownPoint || null,
-        latest_likely_root_cause: payload.likelyRootCause || null,
-        selected_product: session.selectedProduct || null,
-        hi_carrier_name: session.hiCarrierName || null,
-        hi_monthly_premium: session.hiMonthlyPremium || null,
-        hh_carrier_name: session.hhCarrierName || null,
-        hh_monthly_premium: session.hhMonthlyPremium || null,
-        updated_at: endedAt,
-      }).eq('id', leadId)
-      if (leadsErr) console.error('hh_leads update failed:', leadsErr)
+      if (!leadId) {
+        console.error('handleDispositionSave: leadId is null — skipping hh_leads update')
+      } else {
+        const { error: leadsErr } = await supabase.from('hh_leads').update({
+          status: payload.outcome,
+          outcome: payload.outcome,
+          latest_score_total: liveScore.score,
+          latest_score_band: liveScore.band,
+          latest_qualified: qualifiedValue,
+          latest_disqualification_reason: score.disqualificationReason || '',
+          latest_primary_loss_reason: payload.primaryLossReason || null,
+          latest_primary_objection: payload.primaryObjection || null,
+          latest_breakdown_point: payload.breakdownPoint || null,
+          latest_likely_root_cause: payload.likelyRootCause || null,
+          selected_product: session.selectedProduct || null,
+          hi_carrier_name: session.hiCarrierName || null,
+          hi_monthly_premium: session.hiMonthlyPremium || null,
+          hh_carrier_name: session.hhCarrierName || null,
+          hh_monthly_premium: session.hhMonthlyPremium || null,
+          updated_at: endedAt,
+        }).eq('id', leadId)
+        if (leadsErr) console.error('hh_leads update failed:', leadsErr)
+      }
     }
 
     onDispositionSave?.({ ...payload, score: liveScore.score, scoreBand: liveScore.band, qualified: qualifiedValue, disqualificationReason: score.disqualificationReason || '', notes: session.notes || payload.notes })
@@ -983,6 +987,25 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
               <SummaryRow label="Selected Option" value={session.selectedOptionKey ? `Option ${session.selectedOptionKey.toUpperCase()}` : 'None'} />
               <SummaryRow label="Qualified"       value={session.qualified ? 'Yes' : 'No'} />
               <SummaryRow label="Lead Score"      value={`${liveScore.score} · ${liveScore.band}`} />
+              <SummaryRow label="Selected Product"
+                value={session.selectedProduct === 'hospital_indemnity' ? 'Hospital Indemnity'
+                  : session.selectedProduct === 'home_healthcare' ? 'Home Healthcare'
+                  : 'Not Selected'}
+              />
+              {session.selectedProduct === 'hospital_indemnity' && <>
+                <SummaryRow label="HI Carrier"          value={session.hiCarrierName || '—'} />
+                <SummaryRow label="HI Monthly Premium"  value={session.hiMonthlyPremium ? `$${session.hiMonthlyPremium}/mo` : '—'} />
+                <SummaryRow label="Guaranteed Issue"    value={session.hiGuaranteedIssue === true ? 'Yes' : session.hiGuaranteedIssue === false ? 'No' : '—'} />
+                <SummaryRow label="Draft Day"           value={session.hiDraftDay || '—'} />
+                <SummaryRow label="Effective Date"      value={session.hiEffectiveDate || '—'} />
+              </>}
+              {session.selectedProduct === 'home_healthcare' && <>
+                <SummaryRow label="HHC Carrier"          value={session.hhCarrierName || '—'} />
+                <SummaryRow label="HHC Monthly Premium"  value={session.hhMonthlyPremium ? `$${session.hhMonthlyPremium}/mo` : '—'} />
+                <SummaryRow label="Drug Rebate (Annual)" value={session.hhDrugRebateAnnual ? `$${session.hhDrugRebateAnnual}/yr` : '—'} />
+                <SummaryRow label="Draft Day"            value={session.hhDraftDay || '—'} />
+                <SummaryRow label="Effective Date"       value={session.hhEffectiveDate || '—'} />
+              </>}
             </div>
           </div>
         )}
