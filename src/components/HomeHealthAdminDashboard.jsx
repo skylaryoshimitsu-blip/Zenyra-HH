@@ -182,14 +182,14 @@ export default function HomeHealthAdminDashboard({ leads = [], setLeads, disposi
         await supabase.from('hh_leads').update({
           status: 'new',
           latest_qualified: null,
-          latest_score_total: null,
-          latest_score_band: null,
+          score: null,
+          score_band: null,
           latest_disqualification_reason: null,
           latest_primary_loss_reason: null,
           latest_primary_objection: null,
           latest_breakdown_point: null,
           latest_likely_root_cause: null,
-        }).in('id', leadIds)
+        }).in('lead_id', leadIds)
       }
 
       setLeads?.((prev) => prev.map((l) => ({

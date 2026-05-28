@@ -258,6 +258,7 @@ export default function HomeHealthLeadsPage({ dispositions, setDispositions }) {
       console.error('Path B: leadId undefined — skipping disposition write')
       return
     }
+    const currentLead = leads.find(l => (l.lead_id || l.id) === leadId)
     const dbPayload = {
       lead_id: leadId,
       outcome: payload.outcome,
@@ -298,6 +299,7 @@ export default function HomeHealthLeadsPage({ dispositions, setDispositions }) {
       .from('hh_leads')
       .update({
         status: payload.outcome,
+        outcome: payload.outcome,
         score: payload.score ?? 0,
         score_band: payload.scoreBand ?? '',
         latest_qualified: payload.qualified ?? false,
@@ -306,6 +308,11 @@ export default function HomeHealthLeadsPage({ dispositions, setDispositions }) {
         latest_primary_objection: payload.primaryObjection || null,
         latest_breakdown_point: payload.breakdownPoint || null,
         latest_likely_root_cause: payload.likelyRootCause || null,
+        selected_product: currentLead?.selected_product || null,
+        hi_carrier_name: currentLead?.hi_carrier_name || null,
+        hi_monthly_premium: currentLead?.hi_monthly_premium || null,
+        hh_carrier_name: currentLead?.hh_carrier_name || null,
+        hh_monthly_premium: currentLead?.hh_monthly_premium || null,
         notes: payload.notes ?? '',
         updated_at: new Date().toISOString(),
       })
