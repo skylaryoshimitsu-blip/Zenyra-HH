@@ -90,6 +90,7 @@ export default function HomeHealthAdminDashboard({ leads = [], setLeads, disposi
   const [plateSessions, setPlateSessions]   = useState([])
   const [dispositionRows, setDispositionRows] = useState([])
   const [objectionEvents, setObjectionEvents] = useState([])
+  const [leadsFromDb, setLeadsFromDb]       = useState([])
   const [loading, setLoading]               = useState(true)
   const [resetting, setResetting]           = useState(false)
   const [activePreset, setActivePreset]     = useState('today')
@@ -111,6 +112,7 @@ export default function HomeHealthAdminDashboard({ leads = [], setLeads, disposi
       { data: objectionsData,   error: objectionsError },
       { data: plateSessionsData, error: plateSessionsError },
       { data: dispositionsData,  error: dispositionsError },
+      { data: leadsData,         error: leadsError },
     ] = await Promise.all([
       supabase
         .from('hh_calls')
@@ -135,17 +137,23 @@ export default function HomeHealthAdminDashboard({ leads = [], setLeads, disposi
         .gte('disposition_logged_at', startIso)
         .lte('disposition_logged_at', endIso)
         .order('disposition_logged_at', { ascending: false }),
+      supabase
+        .from('hh_leads')
+        .select('lead_id, status')
+        .order('created_at', { ascending: false }),
     ])
 
     if (callsError)         console.error('Error fetching hh_calls:', callsError.message)
     if (objectionsError)    console.warn('hh_objection_events unavailable:', objectionsError.message)
     if (plateSessionsError) console.error('Error fetching hh_plate_sessions:', plateSessionsError.message)
     if (dispositionsError)  console.error('Error fetching hh_dispositions:', dispositionsError.message)
+    if (leadsError)         console.error('Error fetching hh_leads:', leadsError.message)
 
     setCalls(callsData || [])
     setObjectionEvents(objectionsData || [])
     setPlateSessions(plateSessionsData || [])
     setDispositionRows(dispositionsData || [])
+    setLeadsFromDb(leadsData || [])
     setLoading(false)
   }
 
@@ -256,12 +264,12 @@ export default function HomeHealthAdminDashboard({ leads = [], setLeads, disposi
   // ── Lead pipeline (from leads prop — all-time intentional) ──────────────────
   const pipeline = useMemo(() => {
     const counts = { new: 0, contacted: 0, in_progress: 0, sold: 0 }
-    leads.forEach((lead) => {
-      const key = lead.status === 'sold' ? 'sold' : lead.status === 'contacted' ? 'contacted' : lead.status === 'in-progress' ? 'in_progress' : 'new'
+    leadsFromDb.forEach((lead) => {
+      const key = lead.status === 'sold' ? 'sold' : lead.status === 'contacted' ? 'contacted' : lead.status === 'in_progress' ? 'in_progress' : 'new'
       counts[key] += 1
     })
     return counts
-  }, [leads])
+  }, [leadsFromDb])
 
   // ── Score / conversion analytics (from hh_calls in date range) ─────────────
   const analytics = useMemo(() => {
