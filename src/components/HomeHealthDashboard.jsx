@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Activity, AlertTriangle, ClipboardList, Phone, RotateCcw, Users } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
 import HomeHealthLeadsPage from './HomeHealthLeadsPage'
@@ -6,6 +6,15 @@ import HomeHealthLeadsPage from './HomeHealthLeadsPage'
 export default function HomeHealthDashboard({ leads, setLeads, dispositions, setDispositions, onOpenAdmin }) {
   const [activeItem, setActiveItem] = useState('dashboard')
   const [resetting, setResetting] = useState(false)
+
+  useEffect(() => {
+    const fetchLeads = async () => {
+      const { data, error } = await supabase.from('hh_leads').select('*').order('created_at', { ascending: false })
+      if (error) { console.error('Error fetching leads:', error); return }
+      setLeads(data || [])
+    }
+    fetchLeads()
+  }, [])
 
   const metrics = useMemo(() => ({
     totalLeads: leads.length,
