@@ -7,7 +7,6 @@ const OUTCOME_GROUPS = [
     options: [
       { value: 'sold', label: 'Sold' },
       { value: 'application_started', label: 'Application Started' },
-      { value: 'ancillary_sale', label: 'Ancillary Sale' },
     ],
   },
   {
