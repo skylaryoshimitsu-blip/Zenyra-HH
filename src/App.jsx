@@ -105,7 +105,7 @@ export default function App() {
         zipcode: p.zip_code,
       }
 
-      const initialPlate = p.target_hh_plate || 1
+      const initialPlate = p.startAtPlate || p.target_hh_plate || 1
 
       setHandoffPayload({ ...p, handoff_id: handoffId })
       setHandoffLead(leadData)
