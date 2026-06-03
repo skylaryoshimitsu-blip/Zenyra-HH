@@ -368,6 +368,11 @@ export default function HomeHealthSalesPlates({ leadData, onClose, onDisposition
             lastHospitalization: handoffPayload.last_hospitalization || prev.lastHospitalization,
             hasPartA: handoffPayload.has_part_a ?? prev.hasPartA,
           }))
+
+          const startPlate = handoffPayload.startAtPlate || handoffPayload.start_at_plate
+          if (startPlate) {
+            setCurrentPlate(Math.min(startPlate, NAV_PLATES.length))
+          }
         }
 
         const { data: events, error: objErr } = await supabase
